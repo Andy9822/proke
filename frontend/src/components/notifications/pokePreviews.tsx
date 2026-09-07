@@ -10,8 +10,6 @@
  * message is one truncating line rather than a real Slack quote block.
  */
 
-import { cn } from "@/lib/utils";
-
 export interface PokePreview {
   /**
    * The icon the real message opens with - 👀 for a request, 💬 for somebody talking, 🎉 for a
@@ -35,8 +33,6 @@ export interface PokePreview {
 }
 
 export function PokeCard({ preview }: { preview: PokePreview }) {
-  const struck = preview.settled ? "line-through" : undefined;
-
   return (
     <div className="flex w-full items-start gap-2.5 rounded-xl border bg-card/40 p-3.5 text-left">
       {/*
@@ -65,20 +61,18 @@ export function PokeCard({ preview }: { preview: PokePreview }) {
           the card is the same height, which the reel depends on.
         */}
         <p className="truncate text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
-          {preview.marker ? `${preview.marker} ` : null}
           {/*
-            Struck run by run rather than once on the line, because a decoration is drawn in
-            the colour of the element that declares it: one strike on this muted paragraph is
-            a faint line through the words, while Slack's line is the text's own colour, so it
-            is white through the words and blue through the link. The words come up to the
-            text colour too - a struck sentence in the quiet colour reads as faded rather than
-            done, and Slack's is neither quieter nor brighter than the live one beside it.
+            One line through the whole sentence, marker and link included, as Slack draws it.
+            Not `line-through`: a decoration is drawn in the colour of the element declaring
+            it, which here is the muted paragraph, and it sits where the font's metrics put it,
+            which for this face is well above the middle of the words. See `strike` in
+            index.css for the line that is drawn instead.
           */}
-          <span className={cn("text-foreground", struck)}>@{preview.actor}</span>{" "}
-          <span className={cn(struck, preview.settled ? "text-foreground/80" : undefined)}>
-            {preview.lead}
-          </span>{" "}
-          <span className={cn("text-blue-400", struck)}>{preview.subject}</span>
+          <span className={preview.settled ? "strike" : undefined}>
+            {preview.marker ? `${preview.marker} ` : null}
+            <span className="text-foreground">@{preview.actor}</span>{" "}
+            {preview.lead} <span className="text-blue-400">{preview.subject}</span>
+          </span>
         </p>
 
         {/*

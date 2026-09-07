@@ -156,6 +156,23 @@
 }
 
 /*
+ * A settled poke, struck through the way Slack strikes it: one line in the text colour,
+ * through the middle of the words, over the whole sentence at once.
+ *
+ * Drawn as a background rather than with `text-decoration: line-through`, for two reasons. A
+ * decoration takes the colour of the element that declares it, and the sentence it goes on is
+ * muted - so the line came out grey. And a decoration sits where the font's metrics put it,
+ * which for Funnel Display is well above the middle of the x-height - and there is no property
+ * that moves a line-through. A one-pixel gradient can be put exactly where it is wanted.
+ */
+@utility strike {
+  background-image: linear-gradient(var(--foreground), var(--foreground));
+  background-size: 100% 1px;
+  background-position: 0 66%;
+  background-repeat: no-repeat;
+}
+
+/*
  * How the two marks on the landing page arrive: up to size and no further. Same curve as
  * everything else that moves here, so the wiring reads as part of the page settling rather
  * than as an effect played on top of it.
