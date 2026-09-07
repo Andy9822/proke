@@ -2,11 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AnalyticsService } from '../../analytics/analytics.service';
 import { SlackApiError, SlackApiService } from '../../slack/app/slack-api.service';
 import { SlackWorkspaceReadService } from '../../slack/workspaces/read/slack-workspace-read.service';
+import { UserReadService } from '../../user/read/user-read.service';
 import {
+  GithubReviewVerdict,
+  isReviewVerdict,
+  PokeRequestedReviewers,
   PokeResolution,
   PokeResolutionKind,
   PokeReviewer,
 } from '../core/entities/github-notification.interface';
+import { keepsReviewRequestWhileAsked } from '../core/poke-settings';
 import {
   PokeMessageNormalized,
   PokeMessageReviewer,
@@ -25,15 +30,39 @@ export interface PokeResolutionEvent {
   kind: PokeResolutionKind;
   actorGithubId?: string;
   actorLogin?: string;
+  /**
+   * Who GitHub still lists as asked, once this event has happened.
+   *
+   * Absent where the answer cannot matter - a merge or a close moots every request - and where
+   * the payload did not say. The second reads as nobody still asked, on purpose: a reader who
+   * cannot be shown to be on the hook is struck through, which is exactly what every reader got
+   * before the strict setting existed.
+   */
+  requested?: PokeRequestedReviewers;
+  /** Whose request this event took away. Set on a removal, and on nothing else. */
+  removed?: PokeRemovedRequest;
 }
 
 /**
- * Somebody reviewed the pull request and decided nothing. The request stands; the message
- * gains their name.
+ * One of the two, never both: GitHub removes a person or a team per event, exactly as it asks
+ * them. The handle is `org/slug`, lowercased, so it compares to what a poke carries.
+ */
+export interface PokeRemovedRequest {
+  githubId?: string;
+  teamHandle?: string;
+}
+
+/**
+ * Somebody reviewed the pull request and the request stands. The message gains their name.
+ *
+ * Usually because they decided nothing. Under the strict setting, also because they did and
+ * GitHub went on asking the reader anyway - and then the verdict rides along, so the line can
+ * say which way it went.
  */
 export interface PokeReviewerEvent {
   actorGithubId?: string;
   actorLogin?: string;
+  verdict?: GithubReviewVerdict;
 }
 
 /** Slack saying the message is not there to edit. The row is pointing at nothing. */
@@ -60,6 +89,7 @@ export class PokeResolutionService {
     private readonly messageReadService: PokeMessageReadService,
     private readonly messageWriteService: PokeMessageWriteService,
     private readonly workspaceReadService: SlackWorkspaceReadService,
+    private readonly userReadService: UserReadService,
     private readonly slackApiService: SlackApiService,
     private readonly analytics: AnalyticsService,
   ) {}
@@ -81,9 +111,16 @@ export class PokeResolutionService {
         return;
       }
 
+      // A removal is about one person or one team. Everybody else asked about this pull request
+      // is left exactly as they were - unlike a verdict, which is about the pull request itself.
+      const removed = event.removed;
+      const concerned = removed
+        ? messages.filter((message) => concerns(message, removed))
+        : messages;
+
       // Concurrently, and one failure must not take the others with it - these are unrelated
       // people in possibly unrelated workspaces who happen to share a pull request.
-      await Promise.all(messages.map((message) => this.settle(message, event)));
+      await Promise.all(concerned.map((message) => this.settle(message, event)));
     } catch (error) {
       this.logger.error(
         `Could not resolve pokes for ${repositoryFullName}#${pullRequestNumber}: ${error}`,
@@ -122,10 +159,32 @@ export class PokeResolutionService {
   }
 
   private async settle(message: PokeMessageNormalized, event: PokeResolutionEvent): Promise<void> {
+    const bySelf = Boolean(event.actorGithubId) && message.userGithubId === event.actorGithubId;
+
+    // A removal that leaves the reader asked another way - by name after the team was taken
+    // off, or through the team after their name was - takes nothing away from them, and the
+    // message stays exactly as it is. That is the ordinary sequence wherever a team assigns its
+    // reviews: GitHub asks the team, then removes the team and asks some of its members by name.
+    if (event.kind === 'removed' && stillRequested(message, event.requested)) {
+      return;
+    }
+
+    // Somebody else's verdict, under a reader who keeps the request as long as GitHub keeps
+    // asking, is news about the pull request rather than the end of the ask - so it goes on the
+    // line where reviewers go, verdict and all, and the row stays for whatever ends it.
+    if (isReviewVerdict(event.kind) && !bySelf && (await this.keptStanding(message, event))) {
+      await this.name(message, {
+        actorGithubId: event.actorGithubId,
+        actorLogin: event.actorLogin,
+        verdict: event.kind,
+      });
+      return;
+    }
+
     const resolution: PokeResolution = {
       kind: event.kind,
       actorLogin: event.actorLogin,
-      bySelf: Boolean(event.actorGithubId) && message.userGithubId === event.actorGithubId,
+      bySelf,
     };
 
     const workspace = await this.workspaceReadService.readLiveWithToken(message.teamId);
@@ -161,10 +220,37 @@ export class PokeResolutionService {
     }
   }
 
+  /**
+   * Whether this reader keeps the request while GitHub still asks them - and GitHub still does.
+   *
+   * GitHub's half first, because it is free and usually the answer: under the default setting
+   * the reader's account is never read at all, and under the strict one it is read only while
+   * there is something for it to decide. The setting is read live rather than carried on the
+   * row the way the GitHub id is: one indexed read per outstanding request, and a switch flipped
+   * on the dashboard applies to the pokes already sitting in Slack rather than to the next two
+   * days' worth.
+   */
+  private async keptStanding(
+    message: PokeMessageNormalized,
+    event: PokeResolutionEvent,
+  ): Promise<boolean> {
+    if (!stillRequested(message, event.requested)) {
+      return false;
+    }
+
+    const user = await this.userReadService.readById(message.userId);
+
+    // A row that has outlived its account. Deleting the account removes its rows, so this is a
+    // race rather than a state - and the default is the right answer to it, because a message
+    // nobody will ever read again is not worth keeping editable.
+    return user ? keepsReviewRequestWhileAsked(user.pokeSettings) : false;
+  }
+
   private async name(message: PokeMessageNormalized, event: PokeReviewerEvent): Promise<void> {
     const reviewer: PokeMessageReviewer = {
       githubId: event.actorGithubId,
       login: event.actorLogin,
+      verdict: event.verdict,
     };
 
     // The reader's own comments are not news to the reader. Left off rather than rendered as
@@ -174,10 +260,13 @@ export class PokeResolutionService {
       return;
     }
 
-    // Already on the line. A second review from the same person with no more of a verdict than
-    // the first says nothing the message does not, and an edit that changes nothing is a Slack
-    // call for nothing.
-    if (message.reviewers.some((known) => samePerson(known, reviewer))) {
+    // Already on the line, saying nothing new: a second review from the same person with no
+    // more of a verdict than the first, or the verdict they had already reached. An edit that
+    // changes nothing is a Slack call for nothing. A verdict after a comment - or a different
+    // verdict - is news, and changes their mark where they stand.
+    const known = message.reviewers.find((candidate) => samePerson(candidate, reviewer));
+
+    if (known && (!reviewer.verdict || known.verdict === reviewer.verdict)) {
       return;
     }
 
@@ -194,9 +283,15 @@ export class PokeResolutionService {
     // the row does not would lose them the next time anybody else reviewed.
     await this.messageWriteService.addReviewer(message.id, reviewer);
 
-    const reviewers: PokeReviewer[] = [...message.reviewers, reviewer].map((known) => ({
-      login: known.login,
-    }));
+    const reviewers: PokeReviewer[] = (
+      known
+        ? message.reviewers.map((candidate) =>
+            samePerson(candidate, reviewer)
+              ? { ...candidate, verdict: reviewer.verdict }
+              : candidate,
+          )
+        : [...message.reviewers, reviewer]
+    ).map((candidate) => ({ login: candidate.login, verdict: candidate.verdict }));
 
     try {
       await this.slackApiService.updateMessage(
@@ -211,6 +306,10 @@ export class PokeResolutionService {
         repository_owner: message.repositoryFullName.split('/')[0],
         actor_login: event.actorLogin,
         reviewer_count: reviewers.length,
+        // Which of the two things this was: somebody talking, or a verdict the reader's strict
+        // setting kept the request standing through. The second is the one number that says
+        // whether anybody needed the setting.
+        verdict: event.verdict,
       });
     } catch (error) {
       await this.handleFailure(message, error);
@@ -232,6 +331,44 @@ export class PokeResolutionService {
     // decides the edit stopped being worth applying.
     this.logger.warn(`Could not edit the poke sent to ${message.userId}: ${error}`);
   }
+}
+
+/**
+ * Whether GitHub still asks this reader for a review, by either route it can: by name, or
+ * through the team the poke came in by.
+ *
+ * Both are checked whatever the poke said, because the two overlap in practice - a team with
+ * review assignment on is asked, and then some of its members are asked by name a second later.
+ * A reader whose team is off the list but whose name is on it is still asked.
+ */
+function stillRequested(
+  message: PokeMessageNormalized,
+  requested: PokeRequestedReviewers | undefined,
+): boolean {
+  if (!requested) {
+    return false;
+  }
+
+  if (message.userGithubId && requested.githubIds.includes(message.userGithubId)) {
+    return true;
+  }
+
+  const team = message.notification.teamHandle?.toLowerCase();
+
+  return team !== undefined && requested.teamHandles.includes(team);
+}
+
+/** Whether a removal was of this reader's request: their name, or the team their poke named. */
+function concerns(message: PokeMessageNormalized, removed: PokeRemovedRequest): boolean {
+  if (removed.githubId) {
+    return message.userGithubId === removed.githubId;
+  }
+
+  if (removed.teamHandle) {
+    return message.notification.teamHandle?.toLowerCase() === removed.teamHandle;
+  }
+
+  return false;
 }
 
 /**

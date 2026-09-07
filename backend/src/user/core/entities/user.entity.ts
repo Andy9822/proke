@@ -50,6 +50,11 @@ export class PokeSettingsEntity implements PokeStoredSettings {
   // deploy - or one this deploy has since retired - reads as nothing rather than as a mute.
   @Prop({ type: [String], default: undefined })
   mutedTypes?: string[];
+
+  // The same looseness for the same reason. Absent for every row written before the setting
+  // existed, which reads as the default - and a value this deploy cannot spell reads as it too.
+  @Prop()
+  reviewRequestResolution?: string;
 }
 
 export const PokeSettingsSchema = SchemaFactory.createForClass(PokeSettingsEntity);

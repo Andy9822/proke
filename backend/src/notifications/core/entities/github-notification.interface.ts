@@ -122,16 +122,31 @@ export interface GithubNotificationNormalized {
  * What can make a review request stop being true.
  *
  * A superset of the verdicts: a review settles a request, and so does the pull request going
- * away underneath it. A comment-only review is deliberately absent - GitHub leaves the request
- * pending when somebody reviews without deciding, and so should the message.
+ * away underneath it, and so does whoever asked taking the ask back. A comment-only review is
+ * deliberately absent - GitHub leaves the request pending when somebody reviews without
+ * deciding, and so should the message.
  */
-export const POKE_RESOLUTIONS = [...REVIEW_VERDICTS, 'merged', 'closed'] as const;
+export const POKE_RESOLUTIONS = [...REVIEW_VERDICTS, 'merged', 'closed', 'removed'] as const;
 
 export type PokeResolutionKind = (typeof POKE_RESOLUTIONS)[number];
 
 /**
- * Somebody who has reviewed the pull request without deciding anything about it, as a review
- * request poke names them.
+ * Who GitHub still lists as asked for a review, after the event that carried it.
+ *
+ * Straight off the payload: every review and every pull request event carries both lists, in
+ * the state the pull request is in once the event has happened - so a reviewer who has just
+ * reviewed is already off it. What it answers is whether one particular reader is still on the
+ * hook, which is the question a strict review request turns on and a removal has to ask too.
+ */
+export interface PokeRequestedReviewers {
+  githubIds: string[];
+  /** `org/slug`, lowercased, so it compares to what a team poke carries. */
+  teamHandles: string[];
+}
+
+/**
+ * Somebody who has reviewed the pull request without settling the request, as a review request
+ * poke names them.
  *
  * Deliberately not a resolution. GitHub leaves the request pending when a reviewer only
  * comments, and so does the message - but a poke that says "this is waiting on you" is worth a
@@ -144,6 +159,13 @@ export type PokeResolutionKind = (typeof POKE_RESOLUTIONS)[number];
 export interface PokeReviewer {
   /** Absent only if GitHub sent us a review with no user on it. */
   login?: string;
+  /**
+   * What they decided, where the request stood anyway. Absent on a comment-only review, which
+   * is the ordinary case. Set where the reader keeps the request as long as GitHub keeps asking
+   * them - see ReviewRequestResolution - and somebody else's verdict came in meanwhile: whether
+   * the person ahead of you approved or blocked is exactly what decides whether to open it now.
+   */
+  verdict?: GithubReviewVerdict;
 }
 
 /** Why a review request poke is being struck through, and by whom. */

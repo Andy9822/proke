@@ -1,6 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { NotificationType } from '../core/entities/notification-type.enum';
-import { PokeSettings } from '../core/poke-settings';
+import {
+  PokeSettings,
+  REVIEW_REQUEST_RESOLUTIONS,
+  ReviewRequestResolution,
+} from '../core/poke-settings';
 
 /**
  * What somebody has switched off about pokes, complete.
@@ -22,4 +26,14 @@ export class PokeSettingsResponse implements PokeSettings {
       'kind added after they last saved will answer, since only the noes are stored.',
   })
   mutedTypes: NotificationType[];
+
+  @ApiProperty({
+    enum: REVIEW_REQUEST_RESOLUTIONS,
+    description:
+      'When a review request poke is struck through once somebody else reviews. `any_review` ' +
+      'strikes it through at the first verdict from anybody. `strict` waits until GitHub no ' +
+      'longer lists this user, or the team the request came through, as a requested reviewer. ' +
+      'An account that has never touched the settings answers `any_review`.',
+  })
+  reviewRequestResolution: ReviewRequestResolution;
 }

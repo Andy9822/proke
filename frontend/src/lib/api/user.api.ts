@@ -12,10 +12,22 @@ import type { InboxFilters } from "./inbox.api";
  */
 export interface PokeSettings {
   mutedTypes: NotificationType[];
+  /**
+   * When a review request poke is struck through once somebody else reviews. `any_review` is
+   * the first verdict from anybody; `strict` waits until GitHub no longer lists you - or the
+   * team the request came through - as a requested reviewer. Mirrors the backend's
+   * ReviewRequestResolution, and the two are meant to be kept level.
+   */
+  reviewRequestResolution: ReviewRequestResolution;
 }
 
-/** Nothing muted. What an account that has never opened the panel means. */
-export const DEFAULT_POKE_SETTINGS: PokeSettings = { mutedTypes: [] };
+export type ReviewRequestResolution = "any_review" | "strict";
+
+/** Nothing muted, struck through at the first review. What an untouched account means. */
+export const DEFAULT_POKE_SETTINGS: PokeSettings = {
+  mutedTypes: [],
+  reviewRequestResolution: "any_review",
+};
 
 export interface User {
   id: string;

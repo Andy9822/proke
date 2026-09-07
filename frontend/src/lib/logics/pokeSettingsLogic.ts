@@ -6,6 +6,7 @@ import {
   DEFAULT_POKE_SETTINGS,
   PokeSettingsApi,
   type PokeSettings,
+  type ReviewRequestResolution,
 } from "../api/user.api";
 import { authLogic } from "./authLogic";
 
@@ -49,6 +50,10 @@ export const pokeSettingsLogic = kea<pokeSettingsLogicType>([
   actions({
     /** Flip one kind. Takes effect now; the save follows. */
     toggleType: (type: NotificationType) => ({ type }),
+    /** Choose when a review request is struck through. Same timing as a flip. */
+    setReviewRequestResolution: (resolution: ReviewRequestResolution) => ({
+      resolution,
+    }),
     /** The whole set as it now stands on screen, ahead of the server agreeing. */
     edit: (settings: PokeSettings) => ({ settings }),
     dismissNotice: true,
@@ -113,6 +118,7 @@ export const pokeSettingsLogic = kea<pokeSettingsLogicType>([
         saveSettingsFailure: () =>
           "Couldn't save that, so it's back to how it was.",
         toggleType: () => null,
+        setReviewRequestResolution: () => null,
         dismissNotice: () => null,
       },
     ],
@@ -150,18 +156,36 @@ export const pokeSettingsLogic = kea<pokeSettingsLogicType>([
       (s) => [s.settings],
       (settings: PokeSettings): NotificationType[] => settings.mutedTypes,
     ],
+    reviewRequestResolution: [
+      (s) => [s.settings],
+      (settings: PokeSettings): ReviewRequestResolution =>
+        settings.reviewRequestResolution,
+    ],
   }),
 
   listeners(({ actions, values }) => ({
+    // Both build on the whole set as it stands rather than on the one field they move: the
+    // save replaces everything, so a set built from one field would quietly put the other back
+    // to its default on every press.
     toggleType: ({ type }) => {
       const muted = values.mutedTypes.includes(type);
       const next: PokeSettings = {
+        ...values.settings,
         mutedTypes: muted
           ? values.mutedTypes.filter((existing) => existing !== type)
           : [...values.mutedTypes, type],
       };
 
       // On screen now, on the account a moment later. See the note above on why that order.
+      actions.edit(next);
+      actions.saveSettings({ settings: next });
+    },
+    setReviewRequestResolution: ({ resolution }) => {
+      const next: PokeSettings = {
+        ...values.settings,
+        reviewRequestResolution: resolution,
+      };
+
       actions.edit(next);
       actions.saveSettings({ settings: next });
     },

@@ -54,14 +54,37 @@ export class PokeMessageWriteService {
   }
 
   /**
-   * Notes that somebody has reviewed the pull request without deciding about it.
+   * Notes that somebody has reviewed the pull request without settling the request.
    *
-   * An add-to-set, so the same review delivered twice - or the same person reviewing twice -
-   * names them once. Deliberately without touching the timestamps: the TTL is how long the
-   * request is worth editing, and a comment on the pull request does not make the request to
-   * review it any younger.
+   * Named once however many times they review, and carrying the strongest thing they have said:
+   * a verdict after a comment moves them from 💬 to ✅ where they already stand, so the line keeps
+   * the order people reviewed in rather than sending them to the end of it. Somebody not yet on
+   * the line is added with an add-to-set, which is what makes the same review delivered twice a
+   * no-op.
+   *
+   * Deliberately without touching the timestamps: the TTL is how long the request is worth
+   * editing, and a comment on the pull request does not make the request to review it any
+   * younger.
    */
   public async addReviewer(id: string, reviewer: PokeMessageReviewer): Promise<void> {
+    const identity = identityOf(reviewer);
+
+    // Only where there is a verdict to write and a person to write it against. A reviewer with
+    // neither id nor handle matches nobody - and `$elemMatch: {}` would match everybody.
+    if (reviewer.verdict && identity) {
+      const result = await this.messageModel
+        .updateOne(
+          { _id: id, reviewers: { $elemMatch: identity } },
+          { $set: { 'reviewers.$.verdict': reviewer.verdict } },
+          { timestamps: false },
+        )
+        .exec();
+
+      if (result.matchedCount > 0) {
+        return;
+      }
+    }
+
     await this.messageModel
       .updateOne(
         { _id: id },
@@ -82,6 +105,19 @@ export class PokeMessageWriteService {
 }
 
 /**
+ * What finds a reviewer among the ones already on the row. By id where there is one, which
+ * survives a rename; by handle where GitHub gave us nothing better; nothing where it gave
+ * neither.
+ */
+function identityOf(reviewer: PokeMessageReviewer): Record<string, string> | undefined {
+  if (reviewer.githubId) {
+    return { githubId: reviewer.githubId };
+  }
+
+  return reviewer.login ? { login: reviewer.login } : undefined;
+}
+
+/**
  * Without the keys that hold nothing. $addToSet compares whole documents, so `{ login }` and
  * `{ githubId: undefined, login }` would be two different people to it - and which of the two
  * gets written depends on what the driver makes of an undefined.
@@ -90,5 +126,6 @@ function compact(reviewer: PokeMessageReviewer): PokeMessageReviewer {
   return {
     ...(reviewer.githubId ? { githubId: reviewer.githubId } : {}),
     ...(reviewer.login ? { login: reviewer.login } : {}),
+    ...(reviewer.verdict ? { verdict: reviewer.verdict } : {}),
   };
 }

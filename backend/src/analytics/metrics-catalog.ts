@@ -280,6 +280,7 @@ const KNOWN_WEBHOOK_ACTIONS = [
   'edited',
   'submitted',
   'review_requested',
+  'review_request_removed',
   'auto_merge_enabled',
   'added',
   'removed',

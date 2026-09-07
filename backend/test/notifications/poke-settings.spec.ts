@@ -27,16 +27,17 @@ describe('Poke settings', () => {
     await bootstrap.methods.afterAll();
   });
 
-  const update = (token: string, mutedTypes: unknown) =>
+  const update = (token: string, mutedTypes: unknown, reviewRequestResolution?: unknown) =>
     request(bootstrap.app.getHttpServer())
       .put('/notifications/settings')
       .set('authorization', `Bearer ${token}`)
-      .send({ mutedTypes });
+      .send({
+        mutedTypes,
+        ...(reviewRequestResolution === undefined ? {} : { reviewRequestResolution }),
+      });
 
   const readProfile = (token: string) =>
-    request(bootstrap.app.getHttpServer())
-      .get('/users/me')
-      .set('authorization', `Bearer ${token}`);
+    request(bootstrap.app.getHttpServer()).get('/users/me').set('authorization', `Bearer ${token}`);
 
   it('says nothing is muted for an account that has never touched the settings', async () => {
     // given
@@ -46,9 +47,13 @@ describe('Poke settings', () => {
     const response = await readProfile(token);
 
     // then - the whole point of storing the noes: an untouched account is on for everything,
-    // including kinds that did not exist when it was created.
+    // including kinds that did not exist when it was created. And struck through at the first
+    // review, which is the default the same way.
     expect(response.status).toEqual(200);
-    expect(response.body.pokeSettings).toEqual({ mutedTypes: [] });
+    expect(response.body.pokeSettings).toEqual({
+      mutedTypes: [],
+      reviewRequestResolution: 'any_review',
+    });
   });
 
   it('stores what was switched off and hands it back on the profile', async () => {
@@ -128,5 +133,83 @@ describe('Poke settings', () => {
 
     // then
     expect(response.status).toEqual(401);
+  });
+
+  /**
+   * The one setting here that is not a switch off: when a review request poke is struck
+   * through once somebody else reviews. What it does to the message is poke-resolution.spec.ts;
+   * these are about the value itself.
+   */
+  describe('the review request setting', () => {
+    it('stores it and hands it back on the profile', async () => {
+      // given
+      const { token } = await bootstrap.utils.authUtils.setupUser({ githubId: '4242' });
+
+      // when
+      const saved = await update(token, [], 'strict');
+
+      // then
+      expect(saved.status).toEqual(200);
+      expect(saved.body.reviewRequestResolution).toEqual('strict');
+
+      const profile = await readProfile(token);
+      expect(profile.body.pokeSettings.reviewRequestResolution).toEqual('strict');
+    });
+
+    it('reads a body without it as the default', async () => {
+      // given - a client from before the setting existed sends the muted kinds and nothing else
+      const { token } = await bootstrap.utils.authUtils.setupUser({ githubId: '4242' });
+      await update(token, [], 'strict');
+
+      // when
+      const response = await update(token, [NotificationType.IssueComment]);
+
+      // then - the whole set every time, so leaving it out is putting it back
+      expect(response.status).toEqual(200);
+      expect(response.body).toEqual({
+        mutedTypes: [NotificationType.IssueComment],
+        reviewRequestResolution: 'any_review',
+      });
+    });
+
+    it('keeps the muted kinds when only it changes', async () => {
+      // given
+      const { token } = await bootstrap.utils.authUtils.setupUser({ githubId: '4242' });
+
+      // when
+      const response = await update(token, [NotificationType.IssueMention], 'strict');
+
+      // then
+      expect(response.body).toEqual({
+        mutedTypes: [NotificationType.IssueMention],
+        reviewRequestResolution: 'strict',
+      });
+    });
+
+    it('reads a stored value it does not know as the default', async () => {
+      // given - a row written by a deploy with a third option this one has never heard of
+      const { user, token } = await bootstrap.utils.authUtils.setupUser({ githubId: '4242' });
+      await bootstrap.models.userModel.updateOne(
+        { _id: user.id },
+        { $set: { pokeSettings: { mutedTypes: [], reviewRequestResolution: 'lenient' } } },
+      );
+
+      // when
+      const response = await readProfile(token);
+
+      // then
+      expect(response.body.pokeSettings.reviewRequestResolution).toEqual('any_review');
+    });
+
+    it('refuses a value it does not know', async () => {
+      // given
+      const { token } = await bootstrap.utils.authUtils.setupUser({ githubId: '4242' });
+
+      // when
+      const response = await update(token, [], 'lenient');
+
+      // then
+      expect(response.status).toEqual(400);
+    });
   });
 });

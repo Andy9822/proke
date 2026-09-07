@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AnalyticsService } from '../../analytics/analytics.service';
 import { CurrentUserId } from '../../auth/core/decorators/current-user-id.decorator';
 import { UserWriteService } from '../../user/write/user-write.service';
+import { DEFAULT_POKE_SETTINGS } from '../core/poke-settings';
 import { PokeSettingsResponse } from '../dto/poke-settings.response';
 import { UpdatePokeSettingsBody } from '../dto/update-poke-settings.body';
 
@@ -24,11 +25,12 @@ export class PokeSettingsController {
   ) {}
 
   /**
-   * Replaces which kinds of poke this user has switched off.
+   * Replaces what somebody has set about pokes.
    *
    * A PUT because it is the whole set every time: unmuting is spelled by sending the set without
-   * that type in it, and a merge would make it unspellable. Answers with what is now stored,
-   * normalised, so the client draws the truth rather than its own request.
+   * that type in it, and a merge would make it unspellable. A body without the review request
+   * setting means the default, which is the same thing the row means without it. Answers with
+   * what is now stored, normalised, so the client draws the truth rather than its own request.
    */
   @Put()
   @ApiResponse({ type: PokeSettingsResponse })
@@ -38,6 +40,8 @@ export class PokeSettingsController {
   ): Promise<PokeSettingsResponse> {
     const settings = await this.userWriteService.updatePokeSettings(userId, {
       mutedTypes: body.mutedTypes,
+      reviewRequestResolution:
+        body.reviewRequestResolution ?? DEFAULT_POKE_SETTINGS.reviewRequestResolution,
     });
 
     // The names go in whole, unlike the inbox's team and author lists: these are our own closed
@@ -47,6 +51,7 @@ export class PokeSettingsController {
     this.analytics.capture(userId, 'poke_settings_updated', {
       muted_types: settings.mutedTypes,
       muted_count: settings.mutedTypes.length,
+      review_request_resolution: settings.reviewRequestResolution,
     });
 
     return settings;

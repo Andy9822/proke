@@ -12,12 +12,14 @@ import {
   GithubDiffStat,
   GithubNotificationNormalized,
   isReviewVerdict,
+  PokeRequestedReviewers,
 } from '../../notifications/core/entities/github-notification.interface';
 import {
   comparePriority,
   NotificationType,
 } from '../../notifications/core/entities/notification-type.enum';
 import {
+  PokeRemovedRequest,
   PokeResolutionEvent,
   PokeResolutionService,
   PokeReviewerEvent,
@@ -261,8 +263,8 @@ export class GithubWebhookRouterService {
   }
 
   /**
-   * Edits review requests this event has moved on from: struck through where it settled them,
-   * annotated where somebody merely reviewed without deciding.
+   * Edits review requests this event has moved on from: struck through where it settled them or
+   * took them back, annotated where somebody merely reviewed without deciding.
    *
    * Above the early returns, like remembering a comment's author, and for a sharper version of
    * the same reason: the events that settle a review request usually poke nobody at all. The
@@ -1091,6 +1093,7 @@ function readResolution(event: string, payload: any): PokeResolutionEvent | unde
       // payload GitHub sends today, and only one of them is what the field means.
       actorGithubId: identifier(payload.review?.user?.id),
       actorLogin: payload.review?.user?.login,
+      requested: readRequested(payload),
     };
   }
 
@@ -1104,7 +1107,87 @@ function readResolution(event: string, payload: any): PokeResolutionEvent | unde
     };
   }
 
+  // The ask taken back by hand. Nobody is poked about it - what it says is that there is nothing
+  // to do - but a message saying there was is now wrong, and only the person it was addressed
+  // to is concerned. Which person, or which team, rides along so the resolution edits that
+  // message and no other on the pull request.
+  if (event === 'pull_request' && payload?.action === 'review_request_removed') {
+    const removed = readRemovedRequest(payload);
+
+    if (!removed) {
+      return undefined;
+    }
+
+    return {
+      kind: 'removed',
+      actorGithubId: identifier(payload.sender?.id),
+      actorLogin: payload.sender?.login,
+      requested: readRequested(payload),
+      removed,
+    };
+  }
+
   return undefined;
+}
+
+/**
+ * Who GitHub still lists as asked, off the pull request the event carries.
+ *
+ * Both lists are on every pull request object GitHub sends, cut down or not, in the state the
+ * pull request is in once the event has happened - so on a review, the reviewer is already off
+ * it. Absent only where the payload does not have them, which reads downstream as nobody still
+ * asked: the behaviour every reader had before the lists were consulted at all.
+ */
+function readRequested(payload: any): PokeRequestedReviewers | undefined {
+  const reviewers = payload?.pull_request?.requested_reviewers;
+  const teams = payload?.pull_request?.requested_teams;
+
+  if (!Array.isArray(reviewers) || !Array.isArray(teams)) {
+    return undefined;
+  }
+
+  const org = organizationLogin(payload);
+
+  return {
+    githubIds: reviewers
+      .map((reviewer) => identifier(reviewer?.id))
+      .filter((id): id is string => id !== undefined),
+    teamHandles: org
+      ? teams.filter((team) => team?.slug).map((team) => teamHandle(org, team.slug))
+      : [],
+  };
+}
+
+/**
+ * Whose request a removal took away - a person, or a team, the same way a request names one or
+ * the other and never both. Nothing where the payload names neither, which is not a removal we
+ * can act on.
+ */
+function readRemovedRequest(payload: any): PokeRemovedRequest | undefined {
+  const githubId = identifier(payload?.requested_reviewer?.id);
+
+  if (githubId) {
+    return { githubId };
+  }
+
+  const org = organizationLogin(payload);
+  const slug = payload?.requested_team?.slug;
+
+  return org && slug ? { teamHandle: teamHandle(org, slug) } : undefined;
+}
+
+/**
+ * The organisation whose teams these are. Named outright on every organisation event, and where
+ * it is not, the repository's owner is the same organisation: a team can only be asked to review
+ * a repository its own organisation owns, and a repository owned by a person has no teams.
+ */
+function organizationLogin(payload: any): string | undefined {
+  return payload?.organization?.login ?? payload?.repository?.owner?.login;
+}
+
+/** `org/slug`, lowercased - GitHub treats both halves case-insensitively, and so must we. */
+function teamHandle(org: string, slug: string): string {
+  return `${org}/${slug}`.toLowerCase();
 }
 
 /**

@@ -7,6 +7,7 @@ import {
 } from "@/components/notifications/notificationTypes";
 import { PokeReel } from "@/components/notifications/PokeReel";
 import type { NotificationType } from "@/lib/api/connections.api";
+import type { ReviewRequestResolution } from "@/lib/api/user.api";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
@@ -17,6 +18,9 @@ export interface PokesPanelProps {
   /** The kinds switched off, account-wide. Empty is the common answer and the default. */
   mutedTypes: NotificationType[];
   onToggleType: (type: NotificationType) => void;
+  /** When a review request is struck through once somebody else reviews. */
+  reviewRequestResolution: ReviewRequestResolution;
+  onSetReviewRequestResolution: (resolution: ReviewRequestResolution) => void;
   /** A refused save, in words. Optional so the drafts gallery renders the panel without one. */
   notice?: string | null;
 }
@@ -43,8 +47,22 @@ export interface PokesPanelProps {
  * Because a switch that waits for a round trip is a switch people press twice. The write is short
  * and nearly always succeeds; where it does not, the panel goes back to what was stored and says
  * so on the line under the list. See pokeSettingsLogic.
+ *
+ * ## The one row that is not a kind
+ *
+ * Under the review request sits a second switch about the same poke: whether it is struck
+ * through at the first review from anybody, or kept until GitHub stops asking you. It is drawn
+ * indented under its parent rather than as a tenth kind, because it is not one - it changes what
+ * happens to a poke after it has arrived, not whether it arrives - and it is not counted in the
+ * header for the same reason. It goes quiet when its parent is off: there is nothing to strike.
  */
-export function PokesPanel({ mutedTypes, onToggleType, notice }: PokesPanelProps) {
+export function PokesPanel({
+  mutedTypes,
+  onToggleType,
+  reviewRequestResolution,
+  onSetReviewRequestResolution,
+  notice,
+}: PokesPanelProps) {
   // The row the reel is showing. Follows the pointer, and stays where it was left afterwards -
   // the last thing looked at is the most useful thing to still be looking at.
   const [activeIndex, setActiveIndex] = useState(0);
@@ -86,15 +104,32 @@ export function PokesPanel({ mutedTypes, onToggleType, notice }: PokesPanelProps
               ).map((descriptor) => {
                 const index = NOTIFICATION_TYPES.indexOf(descriptor);
 
+                const muted = mutedTypes.includes(descriptor.type);
+
                 return (
                   <li key={descriptor.type}>
                     <TypeRow
                       descriptor={descriptor}
-                      muted={mutedTypes.includes(descriptor.type)}
+                      muted={muted}
                       active={index === activeIndex}
                       onShow={() => setActiveIndex(index)}
                       onToggle={() => onToggleType(descriptor.type)}
                     />
+                    {descriptor.type === "review_requested" ? (
+                      <StrictRow
+                        strict={reviewRequestResolution === "strict"}
+                        disabled={muted}
+                        // The same poke as the row above, so the reel stays where it is.
+                        onShow={() => setActiveIndex(index)}
+                        onToggle={() =>
+                          onSetReviewRequestResolution(
+                            reviewRequestResolution === "strict"
+                              ? "any_review"
+                              : "strict"
+                          )
+                        }
+                      />
+                    ) : null}
                   </li>
                 );
               })}
@@ -214,16 +249,75 @@ function TypeRow({
         The tick is the switch. An empty ring in its place keeps the row exactly as wide when it
         is off, so a column of them does not shuffle as they are pressed.
       */}
-      <span className="flex size-3.5 shrink-0 items-center justify-center">
-        {muted ? (
-          <span
-            aria-hidden="true"
-            className="size-3 rounded-full border border-muted-foreground/30"
-          />
-        ) : (
-          <Octicon path={CHECK} size={12} className="text-emerald-500/80" />
-        )}
-      </span>
+      <Tick on={!muted} />
     </button>
+  );
+}
+
+/**
+ * The switch under the review request: kept until GitHub stops asking you, or struck through at
+ * the first review from anybody.
+ *
+ * Off is the default and reads as the quieter of the two, so the words describe the *on* state -
+ * what pressing it buys - rather than naming a mode. Indented to sit under its parent's title
+ * rather than its icon, which is what says it belongs to that row and not to the group. No
+ * active highlight of its own: hovering it lights the parent, which is the poke it is about.
+ */
+function StrictRow({
+  strict,
+  disabled,
+  onShow,
+  onToggle,
+}: {
+  strict: boolean;
+  disabled: boolean;
+  onShow: () => void;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={strict}
+      disabled={disabled}
+      onMouseEnter={onShow}
+      onFocus={onShow}
+      onClick={() => {
+        onShow();
+        onToggle();
+      }}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg py-1 pl-9 pr-2 text-left text-xs transition-colors",
+        disabled
+          ? "cursor-default opacity-40"
+          : "cursor-pointer hover:bg-accent/50"
+      )}
+    >
+      <span
+        className={cn(
+          "flex-1 transition-colors",
+          strict ? undefined : "text-muted-foreground/70"
+        )}
+      >
+        Keep it until your review is no longer needed
+      </span>
+      <Tick on={strict} />
+    </button>
+  );
+}
+
+/** A tick, or the ring that holds its place. The same width either way, so nothing shuffles. */
+function Tick({ on }: { on: boolean }) {
+  return (
+    <span className="flex size-3.5 shrink-0 items-center justify-center">
+      {on ? (
+        <Octicon path={CHECK} size={12} className="text-emerald-500/80" />
+      ) : (
+        <span
+          aria-hidden="true"
+          className="size-3 rounded-full border border-muted-foreground/30"
+        />
+      )}
+    </span>
   );
 }

@@ -1,6 +1,7 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsEnum } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ArrayMaxSize, IsArray, IsEnum, IsIn, IsOptional } from 'class-validator';
 import { ALL_NOTIFICATION_TYPES, NotificationType } from '../core/entities/notification-type.enum';
+import { REVIEW_REQUEST_RESOLUTIONS, ReviewRequestResolution } from '../core/poke-settings';
 
 /**
  * A full replacement, not a patch: unmuting is spelled by sending the set without that type in
@@ -17,4 +18,15 @@ export class UpdatePokeSettingsBody {
   @ArrayMaxSize(ALL_NOTIFICATION_TYPES.length)
   @IsEnum(NotificationType, { each: true })
   mutedTypes: NotificationType[];
+
+  /**
+   * Optional, unlike the list above, because a replacement that leaves it out has an obvious
+   * meaning - the default - and a client built before the setting existed sends exactly that.
+   * A value that is present is checked, for the same reason a retired type is: a client that
+   * spells the setting wrong should be told, not humoured.
+   */
+  @ApiPropertyOptional({ enum: REVIEW_REQUEST_RESOLUTIONS })
+  @IsOptional()
+  @IsIn(REVIEW_REQUEST_RESOLUTIONS)
+  reviewRequestResolution?: ReviewRequestResolution;
 }

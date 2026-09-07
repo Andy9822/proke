@@ -147,6 +147,9 @@ const RESOLUTION: Record<PokeResolutionKind, { label: string; icon: string }> = 
   changes_requested: { label: 'Reviewed by', icon: '✅' },
   merged: { label: 'Merged by', icon: '✅' },
   closed: { label: 'Closed by', icon: '🚫' },
+  // The ask taken back by whoever made it. The same mark as a close, because it is the same
+  // news to the reader: nothing here is waiting on you, and nobody looked at it.
+  removed: { label: 'Withdrawn by', icon: '🚫' },
 };
 
 /**
@@ -281,20 +284,31 @@ function settledLabel(resolution: PokeResolution): { markup: string; plain: stri
 }
 
 /**
- * `*Reviewed by*: @ada 💬, @grace 💬`. The same half-line, while the request still stands.
+ * `*Reviewed by*: @ada 💬, @grace ✅`. The same half-line, while the request still stands.
  *
  * The same label as a verdict and a different mark, on purpose: the reader learns one shape
  * and reads the mark. A speech bubble is somebody talking, which is exactly what a review
- * with no verdict is, and it is the same mark a comment poke opens with.
+ * with no verdict is, and it is the same mark a comment poke opens with. Somebody who did
+ * decide while the request stood anyway - the strict setting's case - carries the verdict's
+ * own mark, ✅ or ❌: under an unstruck request, which way the person ahead of you went is the
+ * one thing that decides whether to open it now.
  *
  * One mark per person rather than one for the line, so that the line stays readable as a list
  * of people rather than needing to be parsed as a sentence.
  */
 function reviewedLabel(reviewers: PokeReviewer[]): { markup: string; plain: string } {
-  const linked = reviewers.map((reviewer) => `${handleLink(reviewer.login)} 💬`).join(', ');
-  const plain = reviewers.map((reviewer) => `${handle(reviewer.login)} 💬`).join(', ');
+  const linked = reviewers
+    .map((reviewer) => `${handleLink(reviewer.login)} ${reviewerMark(reviewer)}`)
+    .join(', ');
+  const plain = reviewers
+    .map((reviewer) => `${handle(reviewer.login)} ${reviewerMark(reviewer)}`)
+    .join(', ');
 
   return footerLabel('Reviewed by', linked, plain);
+}
+
+function reviewerMark(reviewer: PokeReviewer): string {
+  return reviewer.verdict ? REVIEW[reviewer.verdict].icon : '💬';
 }
 
 function footerLabel(

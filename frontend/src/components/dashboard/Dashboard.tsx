@@ -24,8 +24,10 @@ export function Dashboard() {
   } = useValues(slackLogic);
   const { loadConnection, disconnect, sendTestPoke } = useActions(slackLogic);
   // No load of its own: these ride in on the profile, which authLogic has already read.
-  const { mutedTypes, notice } = useValues(pokeSettingsLogic);
-  const { toggleType } = useActions(pokeSettingsLogic);
+  const { mutedTypes, reviewRequestResolution, notice } =
+    useValues(pokeSettingsLogic);
+  const { toggleType, setReviewRequestResolution } =
+    useActions(pokeSettingsLogic);
 
   useEffect(() => {
     loadConnections();
@@ -80,7 +82,13 @@ export function Dashboard() {
           )?.viewerRole,
         })
       }
-      pokes={{ mutedTypes, notice, onToggleType: toggleType }}
+      pokes={{
+        mutedTypes,
+        reviewRequestResolution,
+        notice,
+        onToggleType: toggleType,
+        onSetReviewRequestResolution: setReviewRequestResolution,
+      }}
       slack={{
         connection: slackConnection,
         loading: slackLoading,

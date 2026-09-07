@@ -24,13 +24,24 @@ export class UserReadService {
   ) {}
 
   public async readByIdOrThrow(id: string): Promise<UserNormalized> {
-    const user = await this.userModel.findById(id).lean<UserEntity>().exec();
+    const user = await this.readById(id);
 
     if (!user) {
       throw new NotFoundException(`User not found`);
     }
 
-    return this.normalize(user);
+    return user;
+  }
+
+  /**
+   * Null where there is no such user. For the paths that hold a user id off a row of their own
+   * and have a sensible answer to it having gone stale - unlike a request on their behalf,
+   * which has none and throws above.
+   */
+  public async readById(id: string): Promise<UserNormalized | null> {
+    const user = await this.userModel.findById(id).lean<UserEntity>().exec();
+
+    return user ? this.normalize(user) : null;
   }
 
   public async readByGithubId(githubId: string): Promise<UserNormalized | null> {
