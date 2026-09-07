@@ -35,6 +35,8 @@ export interface PokePreview {
 }
 
 export function PokeCard({ preview }: { preview: PokePreview }) {
+  const struck = preview.settled ? "line-through" : undefined;
+
   return (
     <div className="flex w-full items-start gap-2.5 rounded-xl border bg-card/40 p-3.5 text-left">
       {/*
@@ -62,17 +64,21 @@ export function PokeCard({ preview }: { preview: PokePreview }) {
           column it ellipsises, which is what Slack itself does at that width - and either way
           the card is the same height, which the reel depends on.
         */}
-        <p
-          className={cn(
-            "truncate text-[11px] leading-relaxed text-muted-foreground sm:text-xs",
-            // The whole line, link included - Slack strikes the span around the link rather
-            // than reaching into it, and so does this.
-            preview.settled ? "line-through" : undefined
-          )}
-        >
+        <p className="truncate text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
           {preview.marker ? `${preview.marker} ` : null}
-          <span className="text-foreground">@{preview.actor}</span>{" "}
-          {preview.lead} <span className="text-blue-400">{preview.subject}</span>
+          {/*
+            Struck run by run rather than once on the line, because a decoration is drawn in
+            the colour of the element that declares it: one strike on this muted paragraph is
+            a faint line through the words, while Slack's line is the text's own colour, so it
+            is white through the words and blue through the link. The words come up to the
+            text colour too - a struck sentence in the quiet colour reads as faded rather than
+            done, and Slack's is neither quieter nor brighter than the live one beside it.
+          */}
+          <span className={cn("text-foreground", struck)}>@{preview.actor}</span>{" "}
+          <span className={cn(struck, preview.settled ? "text-foreground/80" : undefined)}>
+            {preview.lead}
+          </span>{" "}
+          <span className={cn("text-blue-400", struck)}>{preview.subject}</span>
         </p>
 
         {/*
