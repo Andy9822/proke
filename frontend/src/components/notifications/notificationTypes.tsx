@@ -95,6 +95,8 @@ export const ICON = {
     "M11.93 8.5a4.002 4.002 0 0 1-7.86 0H.75a.75.75 0 0 1 0-1.5h3.32a4.002 4.002 0 0 1 7.86 0h3.32a.75.75 0 0 1 0 1.5Zm-1.43-.75a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z",
   people:
     "M2 5.5a3.5 3.5 0 1 1 5.898 2.549 5.508 5.508 0 0 1 3.034 4.084.75.75 0 1 1-1.482.235 4 4 0 0 0-7.9 0 .75.75 0 0 1-1.482-.236A5.507 5.507 0 0 1 3.102 8.05 3.493 3.493 0 0 1 2 5.5ZM11 4a3.001 3.001 0 0 1 2.22 5.018 5.01 5.01 0 0 1 2.56 3.012.749.749 0 0 1-.885.954.752.752 0 0 1-.549-.514 3.507 3.507 0 0 0-2.522-2.372.75.75 0 0 1-.574-.73v-.352a.75.75 0 0 1 .416-.672A1.5 1.5 0 0 0 11 5.5.75.75 0 0 1 11 4Zm-5.5-.5a2 2 0 1 0-.001 3.999A2 2 0 0 0 5.5 3.5Z",
+  pencil:
+    "M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z",
   tag: "M1 7.775V2.75C1 1.784 1.784 1 2.75 1h5.025c.464 0 .91.184 1.238.513l6.25 6.25a1.75 1.75 0 0 1 0 2.474l-5.026 5.026a1.75 1.75 0 0 1-2.474 0l-6.25-6.25A1.752 1.752 0 0 1 1 7.775Zm1.5 0c0 .066.026.13.073.177l6.25 6.25a.25.25 0 0 0 .354 0l5.025-5.025a.25.25 0 0 0 0-.354l-6.25-6.25a.25.25 0 0 0-.177-.073H2.75a.25.25 0 0 0-.25.25ZM6 5a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z",
   star: "M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Zm0 2.445L6.615 5.5a.75.75 0 0 1-.564.41l-3.097.45 2.24 2.184a.75.75 0 0 1 .216.664l-.528 3.084 2.769-1.456a.75.75 0 0 1 .698 0l2.77 1.456-.53-3.084a.75.75 0 0 1 .216-.664l2.24-2.183-3.096-.45a.75.75 0 0 1-.564-.41L8 2.694Z",
 };
@@ -148,6 +150,18 @@ export function Preview({
   );
 }
 
+/**
+ * Named rather than written inline, because it is shown twice: once as it arrives, and once -
+ * on the row about the resolution setting - a little later, after somebody else has approved.
+ */
+const REVIEW_REQUEST_POKE: PokePreview = {
+  marker: "👀",
+  actor: "ada",
+  lead: "requested your review on",
+  subject: "Fix flaky uploads #482",
+  repository: "acme/api",
+};
+
 export const NOTIFICATION_TYPES: NotificationTypeDescriptor[] = [
   // Pull requests: what is happening to work of yours, and what is being asked of you.
   // A review asked of a team you are in arrives here too - it is a review request, and the
@@ -176,13 +190,7 @@ export const NOTIFICATION_TYPES: NotificationTypeDescriptor[] = [
         body="Retry webhook deliveries with backoff #42"
       />
     ),
-    poke: {
-      marker: "👀",
-      actor: "ada",
-      lead: "requested your review on",
-      subject: "Fix flaky uploads #482",
-      repository: "acme/api",
-    },
+    poke: REVIEW_REQUEST_POKE,
   },
   {
     type: "review_submitted",
@@ -405,10 +413,60 @@ export const NOTIFICATION_TYPES: NotificationTypeDescriptor[] = [
 ];
 
 /**
- * Every poke as Slack shows it, in the order the dashboard lists them - taken off the
- * descriptors rather than kept beside them, so the reel's row index and the panel's row are the
- * same thing by construction.
+ * The one row on the dashboard that is not a kind: when a review request poke is crossed out.
+ *
+ * It sits in the pull requests group, directly under the request it is about, because that is
+ * where somebody looking for it looks. Its card is the request's own poke a little later:
+ * somebody else has approved, and under the default setting the line is struck through with
+ * the footer saying who. The setting has no switch - it is a choice between two modes, which
+ * the panel draws as a select - so this carries no type and nothing here counts it as a kind.
  */
-export const POKE_PREVIEWS: PokePreview[] = NOTIFICATION_TYPES.map(
-  (descriptor) => descriptor.poke
-);
+export const REVIEW_REQUEST_RESOLUTION_ROW = {
+  title: "Review request updates",
+  icon: ICON.pencil,
+  poke: {
+    ...REVIEW_REQUEST_POKE,
+    settled: { label: "Reviewed by", actor: "rob", marker: "✅" },
+  } satisfies PokePreview,
+};
+
+/**
+ * A row on the dashboard's list, in the order the list shows them: a kind with a switch, or the
+ * one setting that is not a kind. The reel is built off this same list, so a row's position
+ * here is the card it scrolls to - by construction, which is the only way two lists that have
+ * to agree have ever stayed agreeing.
+ */
+export type PokeRow =
+  | {
+      kind: "type";
+      group: PokeGroupKey;
+      poke: PokePreview;
+      descriptor: NotificationTypeDescriptor;
+    }
+  | {
+      kind: "resolution";
+      group: PokeGroupKey;
+      poke: PokePreview;
+      title: string;
+      icon: string;
+    };
+
+export const POKE_ROWS: PokeRow[] = NOTIFICATION_TYPES.flatMap((descriptor): PokeRow[] => {
+  const row: PokeRow = {
+    kind: "type",
+    group: descriptor.group,
+    poke: descriptor.poke,
+    descriptor,
+  };
+
+  return descriptor.type === "review_requested"
+    ? [row, { kind: "resolution", group: descriptor.group, ...REVIEW_REQUEST_RESOLUTION_ROW }]
+    : [row];
+});
+
+/**
+ * Every card in the reel, in the order the dashboard lists its rows - taken off the rows rather
+ * than kept beside them, so the reel's row index and the panel's row are the same thing by
+ * construction.
+ */
+export const POKE_PREVIEWS: PokePreview[] = POKE_ROWS.map((row) => row.poke);

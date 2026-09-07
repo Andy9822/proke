@@ -10,6 +10,8 @@
  * message is one truncating line rather than a real Slack quote block.
  */
 
+import { cn } from "@/lib/utils";
+
 export interface PokePreview {
   /**
    * The icon the real message opens with - 👀 for a request, 💬 for somebody talking, 🎉 for a
@@ -23,6 +25,13 @@ export interface PokePreview {
   lead: string;
   subject: string;
   repository: string;
+  /**
+   * What has happened since, where the message was edited rather than sent again: the first
+   * line is struck through and this sits at the end of the footer, `*Reviewed by*: @rob ✅`,
+   * as settledLabel spells it. Only the card about the resolution setting carries one - it is
+   * the one thing a switch's card cannot show, what happens to a poke after it has arrived.
+   */
+  settled?: { label: string; actor: string; marker: string };
 }
 
 export function PokeCard({ preview }: { preview: PokePreview }) {
@@ -53,14 +62,34 @@ export function PokeCard({ preview }: { preview: PokePreview }) {
           column it ellipsises, which is what Slack itself does at that width - and either way
           the card is the same height, which the reel depends on.
         */}
-        <p className="truncate text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
+        <p
+          className={cn(
+            "truncate text-[11px] leading-relaxed text-muted-foreground sm:text-xs",
+            // The whole line, link included - Slack strikes the span around the link rather
+            // than reaching into it, and so does this.
+            preview.settled ? "line-through" : undefined
+          )}
+        >
           {preview.marker ? `${preview.marker} ` : null}
           <span className="text-foreground">@{preview.actor}</span>{" "}
           {preview.lead} <span className="text-blue-400">{preview.subject}</span>
         </p>
 
+        {/*
+          The footer is one line in Slack too - repository, then whatever has happened since,
+          laid out along it rather than under it - which is what keeps this card the height of
+          the others. Unstruck, like the real one: it is the part that is still news.
+        */}
         <p className="truncate text-[10px] text-muted-foreground/60">
           {preview.repository}
+          {preview.settled ? (
+            <span className="ml-2">
+              <span className="font-medium text-muted-foreground">
+                {preview.settled.label}
+              </span>
+              : @{preview.settled.actor} {preview.settled.marker}
+            </span>
+          ) : null}
         </p>
       </div>
     </div>

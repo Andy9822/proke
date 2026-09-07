@@ -2,10 +2,13 @@ import {
   NOTIFICATION_TYPES,
   Octicon,
   POKE_GROUPS,
+  POKE_ROWS,
   type NotificationTypeDescriptor,
   type PokeGroup,
+  type PokeRow,
 } from "@/components/notifications/notificationTypes";
 import { PokeReel } from "@/components/notifications/PokeReel";
+import { Select, type SelectOption } from "@/components/ui/Select";
 import type { NotificationType } from "@/lib/api/connections.api";
 import type { ReviewRequestResolution } from "@/lib/api/user.api";
 import { cn } from "@/lib/utils";
@@ -50,11 +53,13 @@ export interface PokesPanelProps {
  *
  * ## The one row that is not a kind
  *
- * Under the review request sits a second switch about the same poke: whether it is struck
- * through at the first review from anybody, or kept until GitHub stops asking you. It is drawn
- * indented under its parent rather than as a tenth kind, because it is not one - it changes what
- * happens to a poke after it has arrived, not whether it arrives - and it is not counted in the
- * header for the same reason. It goes quiet when its parent is off: there is nothing to strike.
+ * Under the review request sits a row about the same poke: whether it is crossed out at the
+ * first review from anybody, or kept until GitHub stops asking you. It is drawn like the nine
+ * around it, with a select where they have a tick, because what it asks has two answers rather
+ * than yes or no. It is not counted in the header, because it is not a kind - it changes what
+ * happens to a poke after it has arrived, not whether it arrives - and its card in the reel is
+ * that poke a little later, struck through. It goes quiet when the request itself is off:
+ * there is nothing to cross out.
  */
 export function PokesPanel({
   mutedTypes,
@@ -89,9 +94,9 @@ export function PokesPanel({
 
       {/*
         A list per group rather than one list with headings inside it, so a heading is never a
-        list item. The reel is handed the row's position in NOTIFICATION_TYPES, which is kept
-        grouped and in group order - so that index is also where the row sits on screen, and the
-        reel scrolls the way the eye just moved.
+        list item. The reel is handed the row's position in POKE_ROWS, which is kept grouped and
+        in group order - so that index is also where the row sits on screen, and the reel
+        scrolls the way the eye just moved.
       */}
       <div className="-mx-2">
         {POKE_GROUPS.map((group, groupIndex) => (
@@ -99,37 +104,36 @@ export function PokesPanel({
             <GroupHeader group={group} first={groupIndex === 0} />
 
             <ul>
-              {NOTIFICATION_TYPES.filter(
-                (descriptor) => descriptor.group === group.key
-              ).map((descriptor) => {
-                const index = NOTIFICATION_TYPES.indexOf(descriptor);
+              {POKE_ROWS.filter((row) => row.group === group.key).map((row) => {
+                const index = POKE_ROWS.indexOf(row);
+                const active = index === activeIndex;
+                const onShow = () => setActiveIndex(index);
 
-                const muted = mutedTypes.includes(descriptor.type);
+                if (row.kind === "resolution") {
+                  return (
+                    <li key="review_request_resolution">
+                      <ResolutionRow
+                        row={row}
+                        resolution={reviewRequestResolution}
+                        // Nothing to cross out while the request itself is switched off.
+                        disabled={mutedTypes.includes("review_requested")}
+                        active={active}
+                        onShow={onShow}
+                        onChange={onSetReviewRequestResolution}
+                      />
+                    </li>
+                  );
+                }
 
                 return (
-                  <li key={descriptor.type}>
+                  <li key={row.descriptor.type}>
                     <TypeRow
-                      descriptor={descriptor}
-                      muted={muted}
-                      active={index === activeIndex}
-                      onShow={() => setActiveIndex(index)}
-                      onToggle={() => onToggleType(descriptor.type)}
+                      descriptor={row.descriptor}
+                      muted={mutedTypes.includes(row.descriptor.type)}
+                      active={active}
+                      onShow={onShow}
+                      onToggle={() => onToggleType(row.descriptor.type)}
                     />
-                    {descriptor.type === "review_requested" ? (
-                      <StrictRow
-                        strict={reviewRequestResolution === "strict"}
-                        disabled={muted}
-                        // The same poke as the row above, so the reel stays where it is.
-                        onShow={() => setActiveIndex(index)}
-                        onToggle={() =>
-                          onSetReviewRequestResolution(
-                            reviewRequestResolution === "strict"
-                              ? "any_review"
-                              : "strict"
-                          )
-                        }
-                      />
-                    ) : null}
                   </li>
                 );
               })}
@@ -255,54 +259,80 @@ function TypeRow({
 }
 
 /**
- * The switch under the review request: kept until GitHub stops asking you, or struck through at
- * the first review from anybody.
+ * The two answers to "when is a review request crossed out", in the panel's words.
  *
- * Off is the default and reads as the quieter of the two, so the words describe the *on* state -
- * what pressing it buys - rather than naming a mode. Indented to sit under its parent's title
- * rather than its icon, which is what says it belongs to that row and not to the group. No
- * active highlight of its own: hovering it lights the parent, which is the poke it is about.
+ * The values are the wire's and the names are not: `any_review` is what the server stores, and
+ * "Default" is what it is to the person choosing - the answer nearly every team wants, and the
+ * one an untouched account already has. Each carries the line that makes it mean something,
+ * because "Strict" on its own is a word, not a setting.
  */
-function StrictRow({
-  strict,
+const REVIEW_REQUEST_RESOLUTIONS: readonly SelectOption<ReviewRequestResolution>[] = [
+  {
+    value: "any_review",
+    title: "Default",
+    detail: "The first review from anybody crosses it out.",
+  },
+  {
+    value: "strict",
+    title: "Strict",
+    detail: "Stays until you review, or GitHub stops asking you.",
+  },
+];
+
+/**
+ * The row that is a setting rather than a kind: when a review request poke is crossed out.
+ *
+ * Drawn like the rows around it - icon, title, the reel following the pointer - with a select
+ * where they have a tick. A select rather than the switch this replaced, because the switch had
+ * one line to describe its on state - "keep it until your review is no longer needed" - and
+ * that line was doing two jobs badly: naming a mode and explaining it. The select names the
+ * mode on the row and explains both where they are chosen, each in a sentence of its own.
+ *
+ * The whole row opens the list, the way the whole of every other row is its switch. Quiet while
+ * the request itself is off: there is nothing to cross out. It still lights and shows its card
+ * under the pointer, though - the card is the explanation of what the setting would do.
+ */
+function ResolutionRow({
+  row,
+  resolution,
   disabled,
+  active,
   onShow,
-  onToggle,
+  onChange,
 }: {
-  strict: boolean;
+  row: Extract<PokeRow, { kind: "resolution" }>;
+  resolution: ReviewRequestResolution;
   disabled: boolean;
+  active: boolean;
   onShow: () => void;
-  onToggle: () => void;
+  onChange: (resolution: ReviewRequestResolution) => void;
 }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={strict}
-      disabled={disabled}
-      onMouseEnter={onShow}
-      onFocus={onShow}
-      onClick={() => {
-        onShow();
-        onToggle();
-      }}
-      className={cn(
-        "flex w-full items-center gap-3 rounded-lg py-1 pl-9 pr-2 text-left text-xs transition-colors",
-        disabled
-          ? "cursor-default opacity-40"
-          : "cursor-pointer hover:bg-accent/50"
-      )}
-    >
-      <span
+    // onFocus bubbles in React, so focus landing on the trigger or on an option in the open
+    // list both keep the reel on this row. On a wrapper rather than the trigger because a
+    // disabled button fires no mouse events of its own, and the card should still show.
+    <div onMouseEnter={onShow} onFocus={onShow}>
+      <Select
+        label={row.title}
+        options={REVIEW_REQUEST_RESOLUTIONS}
+        value={resolution}
+        onChange={onChange}
+        disabled={disabled}
         className={cn(
-          "flex-1 transition-colors",
-          strict ? undefined : "text-muted-foreground/70"
+          "px-2 py-1.5 text-sm",
+          active ? "bg-accent" : disabled ? undefined : "hover:bg-accent/50"
         )}
       >
-        Keep it until your review is no longer needed
-      </span>
-      <Tick on={strict} />
-    </button>
+        <Octicon
+          path={row.icon}
+          className={cn(
+            "shrink-0 transition-colors",
+            active ? "text-foreground" : "text-muted-foreground"
+          )}
+        />
+        <span className="flex-1">{row.title}</span>
+      </Select>
+    </div>
   );
 }
 
