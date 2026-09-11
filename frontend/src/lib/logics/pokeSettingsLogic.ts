@@ -54,6 +54,10 @@ export const pokeSettingsLogic = kea<pokeSettingsLogicType>([
     setReviewRequestResolution: (resolution: ReviewRequestResolution) => ({
       resolution,
     }),
+    /** Turn the daily digest on or off. Same timing as a flip. */
+    setDigestEnabled: (enabled: boolean) => ({ enabled }),
+    /** Choose the hour it arrives, in this browser's timezone. */
+    setDigestHour: (hour: number) => ({ hour }),
     /** The whole set as it now stands on screen, ahead of the server agreeing. */
     edit: (settings: PokeSettings) => ({ settings }),
     dismissNotice: true,
@@ -119,6 +123,8 @@ export const pokeSettingsLogic = kea<pokeSettingsLogicType>([
           "Couldn't save that, so it's back to how it was.",
         toggleType: () => null,
         setReviewRequestResolution: () => null,
+        setDigestEnabled: () => null,
+        setDigestHour: () => null,
         dismissNotice: () => null,
       },
     ],
@@ -161,6 +167,14 @@ export const pokeSettingsLogic = kea<pokeSettingsLogicType>([
       (settings: PokeSettings): ReviewRequestResolution =>
         settings.reviewRequestResolution,
     ],
+    digestEnabled: [
+      (s) => [s.settings],
+      (settings: PokeSettings): boolean => settings.digestEnabled,
+    ],
+    digestHour: [
+      (s) => [s.settings],
+      (settings: PokeSettings): number => settings.digestHour,
+    ],
   }),
 
   listeners(({ actions, values }) => ({
@@ -185,6 +199,18 @@ export const pokeSettingsLogic = kea<pokeSettingsLogicType>([
         ...values.settings,
         reviewRequestResolution: resolution,
       };
+
+      actions.edit(next);
+      actions.saveSettings({ settings: next });
+    },
+    setDigestEnabled: ({ enabled }) => {
+      const next: PokeSettings = { ...values.settings, digestEnabled: enabled };
+
+      actions.edit(next);
+      actions.saveSettings({ settings: next });
+    },
+    setDigestHour: ({ hour }) => {
+      const next: PokeSettings = { ...values.settings, digestHour: hour };
 
       actions.edit(next);
       actions.saveSettings({ settings: next });

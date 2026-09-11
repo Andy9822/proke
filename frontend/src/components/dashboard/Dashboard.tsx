@@ -24,10 +24,19 @@ export function Dashboard() {
   } = useValues(slackLogic);
   const { loadConnection, disconnect, sendTestPoke } = useActions(slackLogic);
   // No load of its own: these ride in on the profile, which authLogic has already read.
-  const { mutedTypes, reviewRequestResolution, notice } =
-    useValues(pokeSettingsLogic);
-  const { toggleType, setReviewRequestResolution } =
-    useActions(pokeSettingsLogic);
+  const {
+    mutedTypes,
+    reviewRequestResolution,
+    digestEnabled,
+    digestHour,
+    notice,
+  } = useValues(pokeSettingsLogic);
+  const {
+    toggleType,
+    setReviewRequestResolution,
+    setDigestEnabled,
+    setDigestHour,
+  } = useActions(pokeSettingsLogic);
 
   useEffect(() => {
     loadConnections();
@@ -85,9 +94,13 @@ export function Dashboard() {
       pokes={{
         mutedTypes,
         reviewRequestResolution,
+        digestEnabled,
+        digestHour,
         notice,
         onToggleType: toggleType,
         onSetReviewRequestResolution: setReviewRequestResolution,
+        onSetDigestEnabled: setDigestEnabled,
+        onSetDigestHour: setDigestHour,
       }}
       slack={{
         connection: slackConnection,

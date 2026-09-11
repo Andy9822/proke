@@ -19,8 +19,11 @@ export interface SelectOption<T extends string> {
   value: T;
   /** The choice, in a word or two. What the trigger shows once it is picked. */
   title: string;
-  /** What picking it does, in one sentence. Shown under the title in the list, never on the trigger. */
-  detail: string;
+  /**
+   * What picking it does, in one sentence. Shown under the title in the list, never on the
+   * trigger. Optional, for lists where the title is the whole answer - an hour explains itself.
+   */
+  detail?: string;
 }
 
 export interface SelectProps<T extends string> {
@@ -269,9 +272,11 @@ export function Select<T extends string>({
                   <span className="block text-xs font-medium leading-snug">
                     {option.title}
                   </span>
-                  <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
-                    {option.detail}
-                  </span>
+                  {option.detail ? (
+                    <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+                      {option.detail}
+                    </span>
+                  ) : null}
                 </span>
                 {/* The same width whether or not it is drawn, so the titles line up. */}
                 <CheckIcon

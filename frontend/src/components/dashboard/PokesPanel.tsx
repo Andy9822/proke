@@ -24,6 +24,11 @@ export interface PokesPanelProps {
   /** When a review request is struck through once somebody else reviews. */
   reviewRequestResolution: ReviewRequestResolution;
   onSetReviewRequestResolution: (resolution: ReviewRequestResolution) => void;
+  /** Whether the daily list of what is still waiting arrives, and at what hour. */
+  digestEnabled: boolean;
+  digestHour: number;
+  onSetDigestEnabled: (enabled: boolean) => void;
+  onSetDigestHour: (hour: number) => void;
   /** A refused save, in words. Optional so the drafts gallery renders the panel without one. */
   notice?: string | null;
 }
@@ -66,6 +71,10 @@ export function PokesPanel({
   onToggleType,
   reviewRequestResolution,
   onSetReviewRequestResolution,
+  digestEnabled,
+  digestHour,
+  onSetDigestEnabled,
+  onSetDigestHour,
   notice,
 }: PokesPanelProps) {
   // The row the reel is showing. Follows the pointer, and stays where it was left afterwards -
@@ -148,6 +157,13 @@ export function PokesPanel({
         did what is not a thing anybody needs told what it is.
       */}
       <PokeReel index={activeIndex} className="mt-4" />
+
+      <DigestRow
+        enabled={digestEnabled}
+        hour={digestHour}
+        onSetEnabled={onSetDigestEnabled}
+        onSetHour={onSetDigestHour}
+      />
 
       {/*
         Nothing under the list unless something has actually happened - a refused save, or every
@@ -332,6 +348,84 @@ function ResolutionRow({
         />
         <span className="flex-1">{row.title}</span>
       </Select>
+    </div>
+  );
+}
+
+const CLOCK =
+  "M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm7-3.25v2.992l2.028.812a.75.75 0 0 1-.557 1.392l-2.5-1A.751.751 0 0 1 7 8.25v-3.5a.75.75 0 0 1 1.5 0Z";
+
+/** No detail line under any of them: "9am" is the whole of what picking it does. */
+const DIGEST_HOURS: readonly SelectOption<string>[] = Array.from(
+  { length: 24 },
+  (_unused, hour) => ({
+    value: String(hour),
+    title: hourName(hour),
+  })
+);
+
+function hourName(hour: number): string {
+  if (hour === 0) return "12am";
+  if (hour === 12) return "12pm";
+
+  return hour < 12 ? `${hour}am` : `${hour - 12}pm`;
+}
+
+/**
+ * The digest, which is a schedule rather than a kind of poke.
+ *
+ * Under the reel rather than in the list above it: a row up there is counted in the header and
+ * previewed in the window, and this would be the tenth of nine kinds with no card to show.
+ */
+function DigestRow({
+  enabled,
+  hour,
+  onSetEnabled,
+  onSetHour,
+}: {
+  enabled: boolean;
+  hour: number;
+  onSetEnabled: (enabled: boolean) => void;
+  onSetHour: (hour: number) => void;
+}) {
+  return (
+    <div className="mt-4 border-t pt-3">
+      <div className="-mx-2">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          onClick={() => onSetEnabled(!enabled)}
+          className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent/50"
+        >
+          <Octicon
+            path={CLOCK}
+            className={cn(
+              "shrink-0 transition-colors",
+              enabled ? "text-foreground" : "text-muted-foreground/40"
+            )}
+          />
+          <span className="flex-1">
+            A daily digest
+            <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+              What is still waiting on your review, once a day.
+            </span>
+          </span>
+          <Tick on={enabled} />
+        </button>
+
+        {enabled ? (
+          <Select
+            label="When the digest arrives"
+            options={DIGEST_HOURS}
+            value={String(hour)}
+            onChange={(value) => onSetHour(Number(value))}
+            className="px-2 py-1.5 text-sm hover:bg-accent/50"
+          >
+            <span className="flex-1 text-muted-foreground">Sent at</span>
+          </Select>
+        ) : null}
+      </div>
     </div>
   );
 }

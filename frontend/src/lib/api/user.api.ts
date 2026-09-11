@@ -19,14 +19,24 @@ export interface PokeSettings {
    * ReviewRequestResolution, and the two are meant to be kept level.
    */
   reviewRequestResolution: ReviewRequestResolution;
+  digestEnabled: boolean;
+  /** Nought to twenty-three, read in this browser's timezone. */
+  digestHour: number;
 }
 
 export type ReviewRequestResolution = "any_review" | "strict";
 
-/** Nothing muted, struck through at the first review. What an untouched account means. */
+/**
+ * Nothing muted, struck through at the first review, no digest. What an untouched account means.
+ *
+ * The digest is the one thing off rather than on: nobody is given a new daily message for having
+ * signed up.
+ */
 export const DEFAULT_POKE_SETTINGS: PokeSettings = {
   mutedTypes: [],
   reviewRequestResolution: "any_review",
+  digestEnabled: false,
+  digestHour: 9,
 };
 
 export interface User {
@@ -73,9 +83,10 @@ export class PokeSettingsApi {
     jwtToken: string,
     settings: PokeSettings
   ): Promise<PokeSettings> {
+    // The zone rides along on every save: only the browser knows it, and moving changes it.
     const response = await axios.put<PokeSettings>(
       "/notifications/settings",
-      settings,
+      { ...settings, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
       { headers: { Authorization: `Bearer ${jwtToken}` } }
     );
 
