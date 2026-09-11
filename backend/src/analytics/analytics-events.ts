@@ -83,4 +83,4 @@ export type AnalyticsEvent =
  * the dashboard's test button and the message that proves a fresh connection works both go out
  * the same pipe, and both are worth telling apart from a real poke rather than hiding.
  */
-export type PokeTrigger = 'github_webhook' | 'test' | 'welcome';
+export type PokeTrigger = 'github_webhook' | 'test' | 'welcome' | 'digest';

@@ -19,7 +19,13 @@ import { UserNormalized } from '../../user/core/entities/user.interface';
 import { GithubNotificationNormalized } from '../core/entities/github-notification.interface';
 import { NotificationType } from '../core/entities/notification-type.enum';
 import { PokeMessageWriteService } from '../messages/write/poke-message-write.service';
-import { buildPokeMessage, buildTestMessage, buildWelcomeMessage } from './slack-message';
+import {
+  buildDigestMessage,
+  buildPokeMessage,
+  buildTestMessage,
+  buildWelcomeMessage,
+  DigestPullRequest,
+} from './slack-message';
 
 /**
  * Why a poke did not reach Slack. Only `sent` and `failed` are unusual; the rest are ordinary
@@ -186,6 +192,23 @@ export class SlackNotificationDeliveryService {
     const { outcome } = await this.send(user.id, buildWelcomeMessage(user.githubLogin), {
       trigger: 'welcome',
       pokeType: 'welcome',
+    });
+
+    return outcome;
+  }
+
+  /**
+   * The day's list, from the sweep rather than anything that just happened. Not remembered the
+   * way a poke is: a digest is a list, with nothing in it to strike through later.
+   */
+  public async deliverDigest(
+    userId: string,
+    pullRequests: DigestPullRequest[],
+    now: Date,
+  ): Promise<SlackDeliveryOutcome> {
+    const { outcome } = await this.send(userId, buildDigestMessage(pullRequests, now), {
+      trigger: 'digest',
+      pokeType: 'digest',
     });
 
     return outcome;

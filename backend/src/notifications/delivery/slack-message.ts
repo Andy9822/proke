@@ -409,6 +409,137 @@ export function buildTestMessage(githubLogin?: string): SlackMessage {
   };
 }
 
+export interface DigestPullRequest {
+  number: number;
+  title: string;
+  url: string;
+  repositoryFullName: string;
+  authorLogin: string;
+  /** ISO 8601, as GitHub gave it. When it was opened. */
+  createdAt: string;
+  changedFiles: number;
+}
+
+/** Past twenty, a count of what is left is more use than more rows. */
+const MAX_DIGEST_ROWS = 20;
+
+/** Slack rejects a section over 3,000 characters. */
+const MAX_SECTION_CHARS = 2800;
+
+const MAX_DIGEST_TITLE_CHARS = 80;
+
+/**
+ * The day's list of what is waiting on somebody, oldest first.
+ *
+ * No avatars: Slack fetches every image while posting and rejects the whole message if one
+ * fails, and a digest would carry one per row.
+ */
+export function buildDigestMessage(pullRequests: DigestPullRequest[], now: Date): SlackMessage {
+  const shown = pullRequests.slice(0, MAX_DIGEST_ROWS);
+  const hidden = pullRequests.length - shown.length;
+  const heading =
+    pullRequests.length === 1
+      ? '*1 pull request is waiting on your review.*'
+      : `*${pullRequests.length} pull requests are waiting on your review.*`;
+
+  const blocks: unknown[] = [{ type: 'section', text: { type: 'mrkdwn', text: heading } }];
+
+  for (const chunk of chunkLines(shown.map((pullRequest) => digestLine(pullRequest, now)))) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: chunk } });
+  }
+
+  if (hidden > 0) {
+    blocks.push({
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: `and ${hidden} more waiting on you.`,
+        },
+      ],
+    });
+  }
+
+  return { text: digestFallback(pullRequests), blocks };
+}
+
+/** All somebody sees in the notification preview, so it has to carry the point alone. */
+function digestFallback(pullRequests: DigestPullRequest[]): string {
+  const [first] = pullRequests;
+
+  if (pullRequests.length === 1) {
+    return `#${first.number} ${first.title} is waiting on your review.`;
+  }
+
+  return `${pullRequests.length} pull requests are waiting on your review.`;
+}
+
+function digestLine(pullRequest: DigestPullRequest, now: Date): string {
+  const title = clamp(escape(pullRequest.title) || 'Untitled', MAX_DIGEST_TITLE_CHARS);
+  const facts = [
+    age(pullRequest.createdAt, now),
+    files(pullRequest.changedFiles),
+    `\`${escape(pullRequest.repositoryFullName)}\``,
+    handleLink(pullRequest.authorLogin),
+  ];
+
+  return `• ${link(pullRequest.url, `#${pullRequest.number} ${title}`)} · ${facts.join(' · ')}`;
+}
+
+/** The largest unit that still fits, rounded down, so nothing reads as older than it is. */
+function age(createdAt: string, now: Date): string {
+  const opened = Date.parse(createdAt);
+
+  if (Number.isNaN(opened)) {
+    return 'age unknown';
+  }
+
+  const hours = Math.floor((now.getTime() - opened) / (60 * 60_000));
+
+  if (hours < 1) {
+    return 'just opened';
+  }
+
+  if (hours < 24) {
+    return hours === 1 ? '1 hour old' : `${hours} hours old`;
+  }
+
+  const days = Math.floor(hours / 24);
+
+  return days === 1 ? '1 day old' : `${days} days old`;
+}
+
+function files(changed: number): string {
+  return changed === 1 ? '1 file' : `${changed} files`;
+}
+
+function chunkLines(lines: string[]): string[] {
+  const chunks: string[] = [];
+  let current = '';
+
+  for (const line of lines) {
+    const candidate = current ? `${current}\n${line}` : line;
+
+    if (candidate.length > MAX_SECTION_CHARS && current) {
+      chunks.push(current);
+      current = line;
+      continue;
+    }
+
+    current = candidate;
+  }
+
+  if (current) {
+    chunks.push(current);
+  }
+
+  return chunks;
+}
+
+function clamp(text: string, limit: number): string {
+  return text.length <= limit ? text : `${text.slice(0, limit - 1).trimEnd()}…`;
+}
+
 /**
  * What the link says: the title, then the number people actually use to refer to it. The
  * number alone is unreadable and the title alone is unsearchable.
