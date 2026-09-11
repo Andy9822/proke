@@ -60,6 +60,9 @@ export interface InboxPullRequest {
   title: string;
   url: string;
   isDraft: boolean;
+  /** ISO 8601, as GitHub gave it. When the pull request was opened, not when it last moved. */
+  createdAt: string;
+  changedFiles: number;
   repositoryId: string;
   repositoryFullName: string;
   author: InboxAuthor;

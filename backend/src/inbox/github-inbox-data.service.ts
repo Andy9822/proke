@@ -24,6 +24,12 @@ export interface GithubInboxPullRequest {
    * and it answers the question the ordering is actually asking - what moved most recently.
    */
   updatedAt: string;
+  /**
+   * When it was opened, and the clock the digest ages rows by. Not `updatedAt`, which moves on
+   * every comment, so the row argued about hardest would read as the newest.
+   */
+  createdAt: string;
+  changedFiles: number;
   repositoryId: string;
   repositoryFullName: string;
   authorLogin: string;
@@ -91,17 +97,22 @@ export class GithubInboxDataService {
     let response: Response;
 
     try {
-      response = await githubFetch(this.metrics, 'graphql_inbox', 'https://api.github.com/graphql', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
+      response = await githubFetch(
+        this.metrics,
+        'graphql_inbox',
+        'https://api.github.com/graphql',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query: INBOX_QUERY,
+            variables: { yours: MAX_YOURS, waiting: MAX_WAITING, threads: MAX_THREADS },
+          }),
         },
-        body: JSON.stringify({
-          query: INBOX_QUERY,
-          variables: { yours: MAX_YOURS, waiting: MAX_WAITING, threads: MAX_THREADS },
-        }),
-      });
+      );
     } catch (error) {
       this.logger.warn(`Could not reach GitHub for an inbox: ${error}`);
       return null;
@@ -159,6 +170,8 @@ function normalizeSearch(search: any): GithubInboxPullRequest[] {
         url: node.url ?? '',
         isDraft: Boolean(node.isDraft),
         updatedAt: node.updatedAt ?? '',
+        createdAt: node.createdAt ?? '',
+        changedFiles: Number(node.changedFiles ?? 0),
         repositoryId: node.repository.id,
         repositoryFullName: node.repository.nameWithOwner,
         authorLogin: login,
@@ -231,6 +244,8 @@ fragment Row on PullRequest {
   url
   isDraft
   updatedAt
+  createdAt
+  changedFiles
   reviewDecision
   repository { id nameWithOwner }
   author { __typename login avatarUrl }

@@ -25,6 +25,12 @@ export class InboxPullRequestResponse {
   @ApiProperty()
   isDraft: boolean;
 
+  @ApiProperty({ description: 'ISO 8601. When the pull request was opened, not when it moved.' })
+  createdAt: string;
+
+  @ApiProperty({ description: 'How many files it touches.' })
+  changedFiles: number;
+
   @ApiProperty({ description: "GitHub's numeric repository id, as a string" })
   repositoryId: string;
 

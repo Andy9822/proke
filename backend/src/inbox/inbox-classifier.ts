@@ -1,7 +1,4 @@
-import {
-  GithubInboxPullRequest,
-  GithubInbox,
-} from './github-inbox-data.service';
+import { GithubInboxPullRequest, GithubInbox } from './github-inbox-data.service';
 import {
   InboxBuildFilters,
   InboxViewFilters,
@@ -161,6 +158,8 @@ function toPullRequest(pullRequest: GithubInboxPullRequest): InboxPullRequest {
     title: pullRequest.title,
     url: pullRequest.url,
     isDraft: pullRequest.isDraft,
+    createdAt: pullRequest.createdAt,
+    changedFiles: pullRequest.changedFiles,
     repositoryId: pullRequest.repositoryId,
     repositoryFullName: pullRequest.repositoryFullName,
     author: {
@@ -224,9 +223,7 @@ function group(
   keys: readonly InboxSectionKey[],
   sectionOf: (pullRequest: GithubInboxPullRequest) => InboxSectionKey,
 ): InboxSectionContent[] {
-  const buckets = new Map<InboxSectionKey, GithubInboxPullRequest[]>(
-    keys.map((key) => [key, []]),
-  );
+  const buckets = new Map<InboxSectionKey, GithubInboxPullRequest[]>(keys.map((key) => [key, []]));
 
   for (const pullRequest of pullRequests) {
     buckets.get(sectionOf(pullRequest))?.push(pullRequest);
