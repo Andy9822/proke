@@ -36,4 +36,23 @@ export class PokeSettingsResponse implements PokeSettings {
       'An account that has never touched the settings answers `any_review`.',
   })
   reviewRequestResolution: ReviewRequestResolution;
+
+  @ApiProperty({
+    description:
+      'Whether this user gets a daily digest of the pull requests still waiting on their ' +
+      'review. Off for an account that has never touched the settings: unlike every other ' +
+      'kind here it is a message on a schedule rather than an answer to a webhook, so it is ' +
+      'asked for rather than assumed.',
+  })
+  digestEnabled: boolean;
+
+  @ApiProperty({
+    minimum: 0,
+    maximum: 23,
+    description:
+      "The hour the digest is sent, read in this user's own timezone. Nine for an account that " +
+      'has never touched the settings. A digest is sent at most once a local day, so changing ' +
+      "this after today's has gone takes effect tomorrow.",
+  })
+  digestHour: number;
 }

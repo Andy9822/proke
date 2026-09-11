@@ -5,7 +5,9 @@ import {
   InboxFilters,
   normalizeInboxSettings,
 } from '../../inbox/core/entities/inbox-filters.interface';
+import { normalizePokeSettings } from '../../notifications/core/poke-settings';
 import { TokenCipherService } from '../../shared/crypto/token-cipher.service';
+import { isTimezone } from '../../shared/time/local-day';
 import { UserEntity } from '../core/entities/user.entity';
 import { UserNormalized } from '../core/entities/user.interface';
 import { UserSerializer } from '../core/entities/user.serializer';
@@ -13,6 +15,17 @@ import { UserSerializer } from '../core/entities/user.serializer';
 /** One person the warmer should build an inbox for, and the settings to build it under. */
 export interface InboxWarmTarget {
   userId: string;
+  settings: InboxFilters;
+}
+
+/** One person who has asked for a digest, and what it takes to decide whether one is due. */
+export interface DigestTarget {
+  userId: string;
+  timezone: string;
+  hour: number;
+  /** The local day their last digest was claimed for. The claim still decides; this saves a write. */
+  sentOn?: string;
+  /** Their inbox settings, so the digest lists what their inbox would. */
   settings: InboxFilters;
 }
 
@@ -93,6 +106,41 @@ export class UserReadService {
       userId: user._id.toString(),
       settings: normalizeInboxSettings(user.inboxSettings),
     }));
+  }
+
+  /**
+   * Everybody who has turned the digest on and still holds a token. Whose hour has come is the
+   * sweep's question, not Mongo's - it cannot evaluate a timezone. Projected for the reason the
+   * warmer's targets are: normalising would decrypt every stored token to answer it.
+   */
+  public async readDigestTargets(): Promise<DigestTarget[]> {
+    const users = await this.userModel
+      .find({
+        'pokeSettings.digestEnabled': true,
+        githubAccessToken: { $exists: true, $ne: null },
+      })
+      .select({ _id: 1, pokeSettings: 1, timezone: 1, digestSentOn: 1, inboxSettings: 1 })
+      .lean<
+        Pick<UserEntity, '_id' | 'pokeSettings' | 'timezone' | 'digestSentOn' | 'inboxSettings'>[]
+      >()
+      .exec();
+
+    return users.flatMap((user) => {
+      // Without a zone there is no hour to be due at.
+      if (!isTimezone(user.timezone)) {
+        return [];
+      }
+
+      return [
+        {
+          userId: user._id.toString(),
+          timezone: user.timezone,
+          hour: normalizePokeSettings(user.pokeSettings).digestHour,
+          sentOn: user.digestSentOn,
+          settings: normalizeInboxSettings(user.inboxSettings),
+        },
+      ];
+    });
   }
 
   private normalize(user: UserEntity): UserNormalized {

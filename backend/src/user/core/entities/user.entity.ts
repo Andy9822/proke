@@ -55,6 +55,14 @@ export class PokeSettingsEntity implements PokeStoredSettings {
   // existed, which reads as the default - and a value this deploy cannot spell reads as it too.
   @Prop()
   reviewRequestResolution?: string;
+
+  @Prop()
+  digestEnabled?: boolean;
+
+  // An hour rather than a time: a stored "09:00+02:00" is wrong twice a year, and again when
+  // they move.
+  @Prop()
+  digestHour?: number;
 }
 
 export const PokeSettingsSchema = SchemaFactory.createForClass(PokeSettingsEntity);
@@ -132,6 +140,16 @@ export class UserEntity {
   @Prop({ type: Date })
   inboxLastUsedAt?: Date;
 
+  // An IANA zone the browser resolved: GitHub exposes none and nothing here implies one. Only
+  // the digest reads it, so most rows never have one.
+  @Prop()
+  timezone?: string;
+
+  // The last local date a digest was claimed for, `YYYY-MM-DD` in this user's own zone. A date
+  // rather than an instant, so the once-a-day rule survives daylight saving and half-hour zones.
+  @Prop()
+  digestSentOn?: string;
+
   @Prop()
   createdAt: Date;
 
@@ -146,3 +164,7 @@ export const UserSchema = SchemaFactory.createForClass(UserEntity);
 // The warmer's one query is a range over this, every five minutes, across every user there is.
 // Sparse because most rows never get the field, and a row without it can never match a `$gte`.
 UserSchema.index({ inboxLastUsedAt: 1 }, { sparse: true });
+
+// The digest sweep asks for everybody who has turned it on, several times an hour. Sparse for
+// the same reason: absent on most rows, and `true` is the only value worth finding.
+UserSchema.index({ 'pokeSettings.digestEnabled': 1 }, { sparse: true });

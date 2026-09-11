@@ -5,8 +5,13 @@ import {
   InboxFilters,
   normalizeInboxSettings,
 } from '../../inbox/core/entities/inbox-filters.interface';
-import { PokeSettings, normalizePokeSettings } from '../../notifications/core/poke-settings';
+import {
+  PokeSettings,
+  PokeSettingsUpdate,
+  normalizePokeSettings,
+} from '../../notifications/core/poke-settings';
 import { TokenCipherService } from '../../shared/crypto/token-cipher.service';
+import { isTimezone, localMomentIn } from '../../shared/time/local-day';
 import { UserEntity } from '../core/entities/user.entity';
 import { UserNormalized } from '../core/entities/user.interface';
 import { UserSerializer } from '../core/entities/user.serializer';
@@ -150,21 +155,91 @@ export class UserWriteService {
    * as the inbox settings above. Unmuting is spelled by sending a set without that type in it,
    * so a merge would make it unspellable.
    */
-  public async updatePokeSettings(userId: string, settings: PokeSettings): Promise<PokeSettings> {
-    const user = await this.userModel
+  public async updatePokeSettings(
+    userId: string,
+    settings: PokeSettingsUpdate,
+    timezone?: string,
+    now: Date = new Date(),
+  ): Promise<PokeSettings> {
+    // Field by field, not one subdocument: a body that says nothing about the digest leaves it.
+    const previous = await this.userModel
       .findOneAndUpdate(
         { _id: new Types.ObjectId(userId) },
-        { $set: { pokeSettings: settings } },
-        { returnDocument: 'after' },
+        {
+          $set: {
+            'pokeSettings.mutedTypes': settings.mutedTypes,
+            'pokeSettings.reviewRequestResolution': settings.reviewRequestResolution,
+            ...(settings.digestEnabled === undefined
+              ? {}
+              : { 'pokeSettings.digestEnabled': settings.digestEnabled }),
+            ...(settings.digestHour === undefined
+              ? {}
+              : { 'pokeSettings.digestHour': settings.digestHour }),
+            ...(timezone ? { timezone } : {}),
+          },
+        },
+        { returnDocument: 'before' },
       )
       .lean<UserEntity>()
       .exec();
 
-    if (!user) {
+    if (!previous) {
       throw new NotFoundException('User not found');
     }
 
-    return normalizePokeSettings(user.pokeSettings);
+    const before = normalizePokeSettings(previous.pokeSettings);
+    const after: PokeSettings = {
+      mutedTypes: settings.mutedTypes,
+      reviewRequestResolution: settings.reviewRequestResolution,
+      digestEnabled: settings.digestEnabled ?? before.digestEnabled,
+      digestHour: settings.digestHour ?? before.digestHour,
+    };
+
+    // Also when there is no stamp at all: enabling from a client that sent no timezone claimed
+    // nothing, and the save that later supplies one must not fire a digest minutes afterwards.
+    if (after.digestEnabled && (!before.digestEnabled || !previous.digestSentOn)) {
+      await this.claimDigestOnEnable(userId, after.digestHour, timezone ?? previous.timezone, now);
+    }
+
+    return after;
+  }
+
+  /**
+   * Takes one digest per person per day, and answers whether this caller got it.
+   *
+   * One conditional write rather than a read and a write, so two passes - or two replicas -
+   * cannot both find the day unclaimed and both send.
+   */
+  public async claimDigest(userId: string, localDay: string): Promise<boolean> {
+    const result = await this.userModel.updateOne(
+      { _id: new Types.ObjectId(userId), digestSentOn: { $ne: localDay } },
+      { $set: { digestSentOn: localDay } },
+    );
+
+    return result.modifiedCount === 1;
+  }
+
+  /** Spends today only where their hour has been, so turning it on at four sends nothing at four. */
+  private async claimDigestOnEnable(
+    userId: string,
+    hour: number,
+    timezone: string | undefined,
+    now: Date,
+  ): Promise<void> {
+    if (!isTimezone(timezone)) {
+      return;
+    }
+
+    const moment = localMomentIn(timezone, now);
+
+    if (moment.hour < hour) {
+      return;
+    }
+
+    await this.userModel.updateOne(
+      { _id: new Types.ObjectId(userId) },
+      { $set: { digestSentOn: moment.day } },
+    );
   }
 
   /**

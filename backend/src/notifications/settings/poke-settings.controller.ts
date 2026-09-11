@@ -38,11 +38,18 @@ export class PokeSettingsController {
     @CurrentUserId() userId: string,
     @Body() body: UpdatePokeSettingsBody,
   ): Promise<PokeSettingsResponse> {
-    const settings = await this.userWriteService.updatePokeSettings(userId, {
-      mutedTypes: body.mutedTypes,
-      reviewRequestResolution:
-        body.reviewRequestResolution ?? DEFAULT_POKE_SETTINGS.reviewRequestResolution,
-    });
+    const settings = await this.userWriteService.updatePokeSettings(
+      userId,
+      {
+        mutedTypes: body.mutedTypes,
+        reviewRequestResolution:
+          body.reviewRequestResolution ?? DEFAULT_POKE_SETTINGS.reviewRequestResolution,
+        // Absences passed through: a client that has not heard of the digest cannot reset it.
+        digestEnabled: body.digestEnabled,
+        digestHour: body.digestHour,
+      },
+      body.timezone,
+    );
 
     // The names go in whole, unlike the inbox's team and author lists: these are our own closed
     // set rather than somebody else's data, and which kinds people actually switch off is the
@@ -52,6 +59,8 @@ export class PokeSettingsController {
       muted_types: settings.mutedTypes,
       muted_count: settings.mutedTypes.length,
       review_request_resolution: settings.reviewRequestResolution,
+      digest_enabled: settings.digestEnabled,
+      digest_hour: settings.digestHour,
     });
 
     return settings;

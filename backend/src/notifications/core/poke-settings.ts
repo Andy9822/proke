@@ -53,13 +53,41 @@ export function isReviewRequestResolution(value: unknown): value is ReviewReques
 export interface PokeSettings {
   mutedTypes: NotificationType[];
   reviewRequestResolution: ReviewRequestResolution;
+  digestEnabled: boolean;
+  /** Nought to twenty-three, read in the timezone on the user row. */
+  digestHour: number;
 }
 
-/** Opting in is already an explicit act; the useful default afterwards is everything. */
+/**
+ * Opting in is already an explicit act; the useful default afterwards is everything.
+ *
+ * Except the digest, which is a message on a schedule rather than an answer to a webhook, and so
+ * is asked for rather than assumed.
+ */
 export const DEFAULT_POKE_SETTINGS: PokeSettings = {
   mutedTypes: [],
   reviewRequestResolution: 'any_review',
+  digestEnabled: false,
+  digestHour: 9,
 };
+
+export function isDigestHour(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 23;
+}
+
+/**
+ * A save, which is the whole set for the mutes and only what it mentions for the digest.
+ *
+ * Absence means different things: a type left out of `mutedTypes` is how unmuting is spelled,
+ * while a body without the digest fields is a client that predates them, and a stale tab must
+ * not be able to undo a schedule it has never heard of.
+ */
+export interface PokeSettingsUpdate {
+  mutedTypes: NotificationType[];
+  reviewRequestResolution: ReviewRequestResolution;
+  digestEnabled?: boolean;
+  digestHour?: number;
+}
 
 /**
  * The settings as they sit on the user row: absent for anybody who has never moved a switch,
@@ -72,6 +100,8 @@ export const DEFAULT_POKE_SETTINGS: PokeSettings = {
 export interface PokeStoredSettings {
   mutedTypes?: string[];
   reviewRequestResolution?: string;
+  digestEnabled?: boolean;
+  digestHour?: number;
 }
 
 /**
@@ -96,6 +126,10 @@ export function normalizePokeSettings(stored: PokeStoredSettings | null | undefi
     reviewRequestResolution: isReviewRequestResolution(resolution)
       ? resolution
       : DEFAULT_POKE_SETTINGS.reviewRequestResolution,
+    digestEnabled: stored?.digestEnabled === true,
+    digestHour: isDigestHour(stored?.digestHour)
+      ? stored.digestHour
+      : DEFAULT_POKE_SETTINGS.digestHour,
   };
 }
 

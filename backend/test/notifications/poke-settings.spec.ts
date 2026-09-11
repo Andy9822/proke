@@ -53,6 +53,8 @@ describe('Poke settings', () => {
     expect(response.body.pokeSettings).toEqual({
       mutedTypes: [],
       reviewRequestResolution: 'any_review',
+      digestEnabled: false,
+      digestHour: 9,
     });
   });
 
@@ -169,6 +171,8 @@ describe('Poke settings', () => {
       expect(response.body).toEqual({
         mutedTypes: [NotificationType.IssueComment],
         reviewRequestResolution: 'any_review',
+        digestEnabled: false,
+        digestHour: 9,
       });
     });
 
@@ -183,6 +187,8 @@ describe('Poke settings', () => {
       expect(response.body).toEqual({
         mutedTypes: [NotificationType.IssueMention],
         reviewRequestResolution: 'strict',
+        digestEnabled: false,
+        digestHour: 9,
       });
     });
 

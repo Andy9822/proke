@@ -1,5 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsEnum, IsIn, IsOptional } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsTimeZone,
+  Max,
+  Min,
+} from 'class-validator';
 import { ALL_NOTIFICATION_TYPES, NotificationType } from '../core/entities/notification-type.enum';
 import { REVIEW_REQUEST_RESOLUTIONS, ReviewRequestResolution } from '../core/poke-settings';
 
@@ -29,4 +40,26 @@ export class UpdatePokeSettingsBody {
   @IsOptional()
   @IsIn(REVIEW_REQUEST_RESOLUTIONS)
   reviewRequestResolution?: ReviewRequestResolution;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  digestEnabled?: boolean;
+
+  @ApiPropertyOptional({ minimum: 0, maximum: 23 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(23)
+  digestHour?: number;
+
+  /**
+   * The reader's IANA zone, which only the browser knows, sent with every save so somebody who
+   * moves is followed. Rejected rather than dropped when unknown: a digest stored against a zone
+   * nothing can read is one that silently never arrives.
+   */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsTimeZone()
+  timezone?: string;
 }
