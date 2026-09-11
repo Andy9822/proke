@@ -8,6 +8,8 @@ import { RefreshTokenEntity } from '../../src/auth/session/entities/refresh-toke
 import { ConnectionsModule } from '../../src/connections/connections.module';
 import { InboxModule } from '../../src/inbox/inbox.module';
 import { InboxWarmModule } from '../../src/inbox/warm/inbox-warm.module';
+import { DigestModule } from '../../src/notifications/digest/digest.module';
+import { DigestService } from '../../src/notifications/digest/digest.service';
 import { PokeSettingsModule } from '../../src/notifications/settings/poke-settings.module';
 import { InboxWarmerService } from '../../src/inbox/warm/inbox-warmer.service';
 import { InstallationEntity } from '../../src/installations/core/entities/installation.entity';
@@ -40,6 +42,9 @@ import { closeInMemoryMongoServer, rootMongooseTestModule } from './mongo-in-mem
  * constructed. `??=` so a spec that wants a different one can still say so first.
  */
 process.env.REVIEW_BATCH_WINDOW_MS ??= '150';
+
+/** Off for the reason below, and more so: this timer posts to Slack rather than only reading. */
+process.env.DIGEST_SWEEP_INTERVAL_MS ??= '0';
 
 /**
  * No sweeping in the background.
@@ -84,6 +89,7 @@ export async function createTestApp() {
       InboxModule,
       InboxWarmModule,
       PokeSettingsModule,
+      DigestModule,
       SlackModule,
       GithubWebhookModule,
       SlackEventsModule,
@@ -163,6 +169,8 @@ export async function createTestApp() {
       // So a spec can run one pass of the warmer on demand. The timer is off in the suite - see
       // INBOX_WARM_SWEEP_INTERVAL_MS above - so this is the only thing that makes it sweep.
       inboxWarmerService: app.get(InboxWarmerService),
+      // Its sweep takes the instant to run at, so a spec can test two timezones at one instant.
+      digestService: app.get(DigestService),
       userReadService: app.get(UserReadService),
       userWriteService: app.get(UserWriteService),
       inMemoryCacheService,

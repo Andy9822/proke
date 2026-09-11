@@ -5,6 +5,7 @@ import { AuthCoreModule } from './auth/core/auth-core.module';
 import { ConnectionsModule } from './connections/connections.module';
 import { InboxModule } from './inbox/inbox.module';
 import { InboxWarmModule } from './inbox/warm/inbox-warm.module';
+import { DigestModule } from './notifications/digest/digest.module';
 import { PokeSettingsModule } from './notifications/settings/poke-settings.module';
 import { getEnvConfig } from './shared/configs/env-configs';
 import { HttpMetricsModule } from './shared/http/http-metrics.middleware';
@@ -30,6 +31,8 @@ import { SlackEventsModule } from './webhooks/slack/slack-events.module';
     // What kinds of poke somebody wants, account-wide. The delivery side of notifications is
     // wired in under the webhook module; this is only the settings route.
     PokeSettingsModule,
+    // The other scheduler: the daily list of what is still waiting on somebody.
+    DigestModule,
     SlackModule,
     GithubWebhookModule,
     SlackEventsModule,

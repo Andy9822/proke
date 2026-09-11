@@ -47,7 +47,9 @@ export type CounterName =
   | 'proke.poke.delivered'
   | 'proke.cache.lookups'
   | 'proke.inbox.warmed'
-  | 'proke.inbox.warm.sweeps';
+  | 'proke.inbox.warm.sweeps'
+  | 'proke.digest.sent'
+  | 'proke.digest.sweeps';
 
 /** Gauges. A value that moves both ways, read at a moment. */
 export type GaugeName = 'proke.event_loop.delay';
@@ -61,6 +63,7 @@ export type GaugeName = 'proke.event_loop.delay';
  */
 export type HistogramName =
   | 'proke.inbox.warm.duration'
+  | 'proke.digest.duration'
   | 'proke.webhook.duration'
   | 'proke.poke.latency'
   | 'proke.github.request.duration'
@@ -150,6 +153,22 @@ export type WarmOutcome = 'refreshed' | 'no_token' | 'github_unavailable' | 'fai
  * that never records a duration.
  */
 export type WarmSweepOutcome = 'completed' | 'overlapped' | 'failed';
+
+/**
+ * What one person's digest came to.
+ *
+ * `empty` is the healthy majority rather than a failure, and kept apart from `sent` because the
+ * ratio between them says whether the digest is worth sending at all. `claimed_already` on a
+ * single-instance deploy would mean the claim is not doing its job.
+ */
+export type DigestOutcome =
+  | 'sent'
+  | 'empty'
+  | 'claimed_already'
+  | 'no_token'
+  | 'github_unavailable'
+  | 'undeliverable'
+  | 'failed';
 
 /**
  * Which GitHub call this was. Hand-written labels rather than URLs, which carry ids.
@@ -250,6 +269,9 @@ export interface MetricAttributeMap {
   // Undimensioned: there is one sweep, and splitting it by anything would only make the series
   // smaller without making it answer a different question.
   'proke.inbox.warm.duration': Record<string, never>;
+  'proke.digest.sent': { outcome: DigestOutcome };
+  'proke.digest.sweeps': { outcome: WarmSweepOutcome };
+  'proke.digest.duration': Record<string, never>;
   'proke.event_loop.delay': { quantile: EventLoopQuantile };
   'http.server.duration': { route: string; method: string; status: string };
 }
