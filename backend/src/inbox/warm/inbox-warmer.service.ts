@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { MetricsService } from '../../analytics/metrics.service';
+import { pool } from '../../shared/async/pool';
 import { getEnvConfig } from '../../shared/configs/env-configs';
 import { InboxWarmTarget, UserReadService } from '../../user/read/user-read.service';
 import { buildFiltersOf } from '../core/entities/inbox-filters.interface';
@@ -196,25 +197,6 @@ export class InboxWarmerService implements OnApplicationBootstrap, OnModuleDestr
       this.logger.error(`Failed to warm the inbox of user ${target.userId}: ${describe(error)}`);
     }
   }
-}
-
-/**
- * Runs `work` over `items`, at most `limit` at a time.
- *
- * Workers pulling from a shared cursor rather than fixed slices, so one slow user delays the
- * next item and not a whole quarter of the list. Never rejects: `warm` handles its own
- * failures, and a pool that threw would take the sweep down with it.
- */
-async function pool<T>(items: T[], limit: number, work: (item: T) => Promise<void>): Promise<void> {
-  let next = 0;
-
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    for (let index = next++; index < items.length; index = next++) {
-      await work(items[index]);
-    }
-  });
-
-  await Promise.all(workers);
 }
 
 function describe(error: unknown): string {
