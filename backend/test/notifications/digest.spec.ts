@@ -1,5 +1,6 @@
 import * as nock from 'nock';
 import * as request from 'supertest';
+import { NotificationType } from '../../src/notifications/core/entities/notification-type.enum';
 import { DEFAULT_POKE_SETTINGS } from '../../src/notifications/core/poke-settings';
 import { createTestApp } from '../utils/bootstrap';
 
@@ -477,6 +478,19 @@ describe('The daily digest', () => {
       expect(list).not.toContain('backfill');
     });
 
+    it('escapes the markup a title may carry, and only once', async () => {
+      await digestUser();
+      mockOneRefresh([pullRequest({ number: 7, title: 'Fix <T> & <U> parsing' })]);
+      const posts = capturePost();
+
+      await digest().sweep(MORNING_IN_LISBON);
+
+      const [, list] = lines(posts);
+
+      expect(list).toContain('#7 Fix &lt;T&gt; &amp; &lt;U&gt; parsing');
+      expect(list).not.toContain('&amp;lt;');
+    });
+
     it('keeps the order when one row has no readable opening time', async () => {
       await digestUser();
       // `updatedAt` sets the arrival order, and this one is where NaN takes the rest with it.
@@ -595,6 +609,71 @@ describe('The daily digest', () => {
       await digest().sweep(AFTERNOON_IN_LISBON);
 
       expect(posts).toHaveLength(1);
+    });
+
+    it('still sends today when an unrelated save lands after the hour, before the sweep', async () => {
+      const { user } = await bootstrap.utils.authUtils.setupUser({
+        githubAccessToken: 'gho_token',
+      });
+      await connectSlack(user.id);
+      mockOneRefresh();
+      const posts = capturePost();
+
+      // Switched on at half past seven, so today is not spent.
+      await enableDigest(user.id, 9, new Date('2026-09-11T06:30:00Z'));
+
+      // A mute at half past nine: the hour has been, no sweep has run yet.
+      await bootstrap.services.userWriteService.updatePokeSettings(
+        user.id,
+        { mutedTypes: [NotificationType.IssueComment], reviewRequestResolution: 'any_review' },
+        'Europe/Lisbon',
+        MORNING_IN_LISBON,
+      );
+
+      expect((await storedUser(user.id))?.digestSentOn).toBeUndefined();
+
+      await digest().sweep(MORNING_IN_LISBON);
+
+      expect(posts).toHaveLength(1);
+    });
+
+    it('starts tomorrow when the zone arrives after the hour has been', async () => {
+      const { user } = await bootstrap.utils.authUtils.setupUser({
+        githubAccessToken: 'gho_token',
+      });
+      await connectSlack(user.id);
+      mockOneRefresh();
+      const posts = capturePost();
+
+      // Switched on from a client that sent no zone: nothing to claim against yet.
+      await bootstrap.services.userWriteService.updatePokeSettings(
+        user.id,
+        {
+          mutedTypes: [],
+          reviewRequestResolution: 'any_review',
+          digestEnabled: true,
+          digestHour: 9,
+        },
+        undefined,
+        new Date('2026-09-11T06:30:00Z'),
+      );
+
+      expect((await storedUser(user.id))?.digestSentOn).toBeUndefined();
+
+      // The zone lands at half past nine. Minutes later is not the hour they chose.
+      await bootstrap.services.userWriteService.updatePokeSettings(
+        user.id,
+        { mutedTypes: [], reviewRequestResolution: 'any_review' },
+        'Europe/Lisbon',
+        MORNING_IN_LISBON,
+      );
+
+      expect((await storedUser(user.id))?.digestSentOn).toEqual('2026-09-11');
+
+      await digest().sweep(MORNING_IN_LISBON);
+
+      expect(posts).toHaveLength(0);
+      expect(untouchedGithubMocks()).toBe(true);
     });
 
     it('leaves an existing schedule alone when a client saves without it', async () => {

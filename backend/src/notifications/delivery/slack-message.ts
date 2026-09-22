@@ -475,7 +475,9 @@ function digestFallback(pullRequests: DigestPullRequest[]): string {
 }
 
 function digestLine(pullRequest: DigestPullRequest, now: Date): string {
-  const title = clamp(escape(pullRequest.title) || 'Untitled', MAX_DIGEST_TITLE_CHARS);
+  // Raw here: `link` escapes its label, and a title escaped twice reads as `&amp;lt;T&amp;gt;`.
+  // Cut before that, so the limit counts what the reader sees and never lands inside an entity.
+  const title = clamp(pullRequest.title || 'Untitled', MAX_DIGEST_TITLE_CHARS);
   const facts = [
     age(pullRequest.createdAt, now),
     files(pullRequest.changedFiles),

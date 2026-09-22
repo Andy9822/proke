@@ -195,9 +195,14 @@ export class UserWriteService {
       digestHour: settings.digestHour ?? before.digestHour,
     };
 
-    // Also when there is no stamp at all: enabling from a client that sent no timezone claimed
-    // nothing, and the save that later supplies one must not fire a digest minutes afterwards.
-    if (after.digestEnabled && (!before.digestEnabled || !previous.digestSentOn)) {
+    const switchedOn = after.digestEnabled && !before.digestEnabled;
+    // The save that first supplies a zone counts as the switch-on: enabling from a client that
+    // sent none claimed nothing, and this one must not fire a digest minutes afterwards. Only
+    // that save, though. Any other one made after the hour, before the sweep has been, would
+    // otherwise spend the day on a digest that never went.
+    const zoneArrived = after.digestEnabled && !previous.timezone && Boolean(timezone);
+
+    if (switchedOn || zoneArrived) {
       await this.claimDigestOnEnable(userId, after.digestHour, timezone ?? previous.timezone, now);
     }
 
